@@ -160,7 +160,7 @@ server <- function(input, output, session) {
   getExamples <- function(direction,pattern, last_pos,control_id){
     
     # txt file for examples
-    if (is.na(source_txt)){
+    if (is.na(source_txt) | (source_txt=="")){
       if (file.exists("train2.txt")) {
         fileName <- paste0(app_dir,"train2.txt")
         source_txt <- readChar(fileName, file.info(fileName)$size)  
