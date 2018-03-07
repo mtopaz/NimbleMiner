@@ -478,10 +478,10 @@ server <- function(input, output, session) {
     #learn unigram model - here we need to give user the option to define the word window (window)
     updateProgress(detail = "learn unigram model")
     
-    train_word2vec(paste0(app_dir,"train2.txt"),paste0(app_dir,"train.bin"),vectors=200,threads=4,window=input$setting_window,iter=5,negative_samples=0,force=TRUE)
+    model = train_word2vec(paste0(app_dir,"train2.txt"),paste0(app_dir,"train.bin"),vectors=200,threads=4,window=input$setting_window,iter=5,negative_samples=0,force=TRUE)
 
     
-    if (1<0) 
+    if (1<0) #rword2vec implementation
       {
         library("rword2vec")
   
