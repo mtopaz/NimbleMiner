@@ -1,0 +1,21 @@
+span.window-text{
+	/*background-color: #bae2f4;*/
+	background-color: none;
+}
+input#lastClickId{
+	visibility:hidden;
+}
+input#lastClickSimilarTermId{
+	visibility:hidden;
+}
+label[for=lastClickId],label[for=lastClickSimilarTermId]{
+	visibility:hidden;
+}	
+.not-found{
+	color: red;
+	font-weight: bold;
+}	
+/*input#suggestedSynonyms,input#trueSynonyms, input#systemEfficacy{
+	pointer-events: none;
+	width: 100px;
+}*/

@@ -1,0 +1,9 @@
+span.window-text{
+	background-color: #bae2f4;
+}
+input#lastClickId{
+	visibility:hidden;
+}
+label[for=lastClickId]{
+	visibility:hidden;
+}	
