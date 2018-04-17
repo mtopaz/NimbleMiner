@@ -15,6 +15,23 @@ label[for=lastClickId],label[for=lastClickSimilarTermId]{
 	color: red;
 	font-weight: bold;
 }	
+#simclinLabel{
+	text-align: center;
+	font-weight: bold;
+	font-size: 22px;
+}
+#addNewNegation_click{
+	display: block;
+    margin: 0 auto;
+}
+.true-simclin{
+	font-weight: bold;
+	color: green;
+}
+.false-simclin{
+	font-weight: bold;
+	color: red;
+}
 /*input#suggestedSynonyms,input#trueSynonyms, input#systemEfficacy{
 	pointer-events: none;
 	width: 100px;
