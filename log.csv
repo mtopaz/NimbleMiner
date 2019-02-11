@@ -1,2 +1,45 @@
 "","DateTime","UserId","Operation","Parameters","ValueBefore","ValueAfter","Duration"
-
+"1","2019-01-20 15:18:57",1,"Training the model","Method: SVM, Cost = 4, Type =C-classification, Kernel = radial",NA,"Precision: TRUE -  0.69, FALSE - 0.68; Recall: TRUE -  0.65, FALSE - 0.72",NA
+"11","2019-01-21 12:30:43",1,"Prediction","Method: SVM, Column name of reference value - dm_high_by_admission",NA,"Precision = NA, recall=0",NA
+"12","2019-01-21 15:12:37",1,"Prediction","Method: SVM, Column name of reference value - dm_high_by_admission",NA,"Precision = NA, recall=0",NA
+"13","2019-01-24 15:46:20",1,"Build the model","n-grams: 4; window: 10; min number: 20; similar terms count: 50; source file: .",NA,"","9.71"
+"14","2019-01-24 15:56:30",1,"Add user simclin","",NA,"tumir",NA
+"15","2019-01-24 15:56:37",1,"Add user simclin","",NA,"tumor ",NA
+"16","2019-01-24 15:56:45",1,"System search similar terms for simclin","Simclin: tumir from category Tumor",NA,"0 similar terms found.","0.92"
+"17","2019-01-24 15:56:46",1,"Update System Metrics","suggestedSimilarTerms","0","49",NA
+"18","2019-01-24 15:56:46",1,"Update System Metrics","systemEfficacy","0","0",NA
+"19","2019-01-24 15:56:46",1,"System search similar terms for simclin","Simclin: tumor from category Tumor",NA,"49 similar terms found ( 1 were deleted before by user as irrelevant or duplicate of obtained before): tumor cyst resection metastasis lobectomy excision duodenal abdominal_aortic_aneurysm adhesions metastatic mets metastases anastomosis gastrectomy internal meningioma colonic colectomy gastric cell_carcinoma osteopenia compression_fractures goiter av_fistula pseudoaneurysm carcinoma hiatal_hernia hemiarthroplasty cholecystectomy squamous_cell arthroplasty diverticulitis malformation hip_fracture adenocarcinoma lysis inguinal_hernia pubic left_sided_weakness status_post_cholecystectomy sbo craniotomy partial decompression aaa skull lumbar sigmoid uterine longstanding","0.45"
+"110","2019-01-27 14:35:48",1,"Build the model","n-grams: 4; window: 10; min number: 20; similar terms count: 50; source file: .",NA,"","4.28"
+"111","2019-01-27 14:46:32",1,"Select similar term as simclin","Selected similar term: metastasis",NA,"",NA
+"112","2019-01-27 14:46:32",1,"Select similar term as simclin","Selected similar term: metastatic",NA,"",NA
+"113","2019-01-27 14:46:33",1,"Select similar term as simclin","Selected similar term: metastases",NA,"",NA
+"114","2019-01-27 14:46:33",1,"Select similar term as simclin","Selected similar term: mets",NA,"",NA
+"115","2019-01-27 14:46:33",1,"Select similar term as simclin","Selected similar term: cell_carcinoma",NA,"",NA
+"116","2019-01-27 14:46:33",1,"Update System Metrics","trueSimilarTerms","0","5",NA
+"117","2019-01-27 14:46:33",1,"Update System Metrics","systemEfficacy","0","0.1",NA
+"118","2019-01-27 14:46:39",1,"Update System Metrics","suggestedSimilarTerms","49","88",NA
+"119","2019-01-27 14:46:39",1,"Update System Metrics","systemEfficacy","0.1","0.06",NA
+"120","2019-01-27 14:46:38",1,"System search similar terms for simclin","Simclin: metastasis from category Tumor",NA,"39 similar terms found ( 12 were deleted before by user as irrelevant or duplicate of obtained before): metastasis involvement metastases numerous malformation fibrosis uterus skull infarcts loop sclerosis lymph_node hiatal_hernia mets osteopenia cyst humeral vasospasm pulmonary_nodules insufficiency cavernous compression_fractures malignant frontal_lobe corresponding obstructing cystic infarct cerebellum newly thoracic duodenal hemorrhagic mesenteric microvascular minor necrosis as_described_above diverticula scarring subdural_hematoma duplex hepatic gallstones dual subacute embolic emphysema cbd diverticulitis metastatic","0"
+"121","2019-01-27 14:46:39",1,"Update System Metrics","suggestedSimilarTerms","49","72",NA
+"122","2019-01-27 14:46:39",1,"Update System Metrics","systemEfficacy","0.1","0.07",NA
+"123","2019-01-27 14:46:39",1,"System search similar terms for simclin","Simclin: metastatic from category Tumor",NA,"23 similar terms found ( 27 were deleted before by user as irrelevant or duplicate of obtained before): metastatic mets lymphoma adenocarcinoma tumor metastases ovarian squamous_cell carcinoma cll metastasis lobectomy cell_lung_cancer resection pancreatic cycles gastric sclerosis duodenal cyst melanoma diverticulitis stage thyroid involvement hiatal_hernia uterine cell_carcinoma cell abdominal_aortic_aneurysm colonic section malformation surgeries stricture ge_junction bronchiectasis medical_problems meningioma spinal_stenosis adhesions renal_disease metastatic_breast_cancer hodgkin pulmonary_fibrosis compression_fractures excision osteopenia lul esophageal","0"
+"124","2019-01-27 14:46:39",1,"Update System Metrics","suggestedSimilarTerms","49","76",NA
+"125","2019-01-27 14:46:39",1,"Update System Metrics","systemEfficacy","0.1","0.07",NA
+"126","2019-01-27 14:46:39",1,"System search similar terms for simclin","Simclin: metastases from category Tumor",NA,"27 similar terms found ( 23 were deleted before by user as irrelevant or duplicate of obtained before): metastases diverticula metastasis hepatic pulmonary_nodules involvement loop mesenteric as_described_above could_represent cysts obstructing numerous cecum nodular infiltration uterus enhancing splenic fibrosis malignant without_evidence x_cm likely_represents heterogeneous lymph_node metastatic_disease cystic bony skull necrotizing inflammation intra_abdominal foci loculated acute_cholecystitis infarcts hemorrhagic parietal pulmonary_emboli stone segmental parenchyma malformation fatty films corresponding frontal_lobe largest microvascular","0"
+"127","2019-01-27 14:46:39",1,"Update System Metrics","suggestedSimilarTerms","49","65",NA
+"128","2019-01-27 14:46:39",1,"Update System Metrics","systemEfficacy","0.1","0.08",NA
+"129","2019-01-27 14:46:39",1,"System search similar terms for simclin","Simclin: mets from category Tumor",NA,"16 similar terms found ( 39 were deleted before by user as irrelevant or duplicate of obtained before): mets metastasis metastatic malformation sbo lul cll lobectomy duodenal diverticulitis cell_lung_cancer colonic sclerosis squamous_cell cholelithiasis adenocarcinoma metastases cyst compression_fractures involvement hiatal_hernia malignant aaa bx adhesions lymph_node perforation toxic resection lymphoma high_grade sdh ge_junction tumor pericarditis polypectomy fibrosis mastectomy vasospasm stricture uterine diverticulosis nephrectomy x_cm dual insufficiency stage inguinal_hernia embolic surgeries pet des mass pfts vats","0"
+"130","2019-01-27 14:46:39",1,"Update System Metrics","suggestedSimilarTerms","49","80",NA
+"131","2019-01-27 14:46:39",1,"Update System Metrics","systemEfficacy","0.1","0.06",NA
+"132","2019-01-27 14:46:39",1,"System search similar terms for simclin","Simclin: cell_carcinoma from category Tumor",NA,"31 similar terms found ( 19 were deleted before by user as irrelevant or duplicate of obtained before): cell_carcinoma hiatal_hernia nephrolithiasis sinusitis osteopenia surgeries polyps inguinal_hernia cyst status_post_cholecystectomy osteoarthritis abdominal_aortic_aneurysm ovarian cadaveric nephrectomy rheumatoid_arthritis diverticulitis rheumatic hysterectomy sleep_apnea goiter herpes_zoster transient_ischemic uterine hernia_repair obesity degeneration prostate_ca tah colonic umbilical_hernia renal_transplant psh degenerative breast_ca cataract hypercholesterolemia melanoma remote bx spinal_stenosis arthritis esophageal hip_fracture tia cataract_surgery peptic_ulcer_disease alcoholic b_deficiency xrt","0"
+"133","2019-01-28 18:11:55",1,"Training the model","Bidirectional LSTM, 1000 features, maxlen = 100, keras package",NA,"Precision: 0.79; Recall: 0.5",NA
+"134","2019-01-28 19:00:43",1,"Training the model","Bidirectional LSTM, 1000 features, maxlen = 100, keras package",NA,"Precision: 0.43; Recall: 0.5",NA
+"135","2019-01-28 19:39:06",1,"Training the model","Bidirectional LSTM, 1000 features, maxlen = 100, keras package",NA,"Precision: 0.34; Recall: 0.5",NA
+"136","2019-02-11 15:00:26",1,"Labeling","totalNotes",NA,"11","1.62"
+"137","2019-02-11 15:00:26",1,"Labeling","totalPositiveNotes",NA,"7",NA
+"138","2019-02-11 15:00:27",1,"Labeling","totalIrrelevantPositiveNotes",NA,"0",NA
+"139","2019-02-11 15:00:27",1,"Labeling","totalNegatedPositiveNotes",NA,"0",NA
+"140","2019-02-11 15:00:27",1,"Labeling","totalNegativeNotes",NA,"4",NA
+"141","2019-02-11 15:37:33",1,"Training the model","Method: SVM, Cost = 4, Type =C-classification, Kernel = radial",NA,"",NA
+"142","2019-02-11 15:38:21",1,"Training the model","Method: SVM, Cost = 4, Type =C-classification, Kernel = radial",NA,"",NA
+"143","2019-02-11 15:55:53",1,"Prediction","Method: SVM","","",""
