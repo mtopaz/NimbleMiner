@@ -8,6 +8,9 @@ input#lastClickId{
 input#lastClickSimilarTermId{
 	visibility:hidden;
 }
+#selectedCategory{
+	visibility:hidden;
+}	
 label[for=lastClickId],label[for=lastClickSimilarTermId]{
 	visibility:hidden;
 }	
@@ -32,7 +35,23 @@ label[for=lastClickId],label[for=lastClickSimilarTermId]{
 	font-weight: bold;
 	color: red;
 }
+.clear-both{
+	clear: both;
+}
 /*input#suggestedSynonyms,input#trueSynonyms, input#systemEfficacy{
 	pointer-events: none;
 	width: 100px;
 }*/
+div#header-div{
+  padding:0;
+  background-image: linear-gradient(#54b4eb, #2fa4e7 60%, #1d9ce5);
+  color: white;
+  font-weight: bold;
+  font-size: 22px;
+  text-align: center;
+  border-radius: 0;
+  margin-bottom: 10px;
+}	
+/*#selected_terms{
+  direction: rtl;
+}*/	

@@ -1,168 +1,168 @@
-,Negation,Type,Frequency,Examples
-1,absence of,before,0,NA
-2,cannot,before,0,NA
-3,cannot see,before,0,NA
-4,checked for,before,0,NA
-5,declined,before,0,NA
-6,declines,before,0,NA
-7,denied,before,0,NA
-8,denies,before,0,NA
-9,denying,before,0,NA
-10,evaluate for,before,0,NA
-11,fails to reveal,before,0,NA
-12,free of,before,0,NA
-13,negative for,before,0,NA
-14,never developed,before,0,NA
-15,never had,before,0,NA
-16,no,before,0,NA
-17,no abnormal,before,0,NA
-18,no cause of,before,0,NA
-19,no complaints of,before,0,NA
-20,no evidence,before,0,NA
-21,no new evidence,before,0,NA
-22,no other evidence,before,0,NA
-23,no evidence to suggest,before,0,NA
-24,no findings of,before,0,NA
-25,no findings to indicate,before,0,NA
-26,no mammographic evidence of,before,0,NA
-27,no new,before,0,NA
-28,no radiographic evidence of,before,0,NA
-29,no sign of,before,0,NA
-30,no significant,before,0,NA
-31,no signs of,before,0,NA
-32,no suggestion of,before,0,NA
-33,no suspicious,before,0,NA
-34,not,before,0,NA
-35,not appear,before,0,NA
-36,not appreciate,before,0,NA
-37,not associated with,before,0,NA
-38,not complain of,before,0,NA
-39,not demonstrate,before,0,NA
-40,not exhibit,before,0,NA
-41,not feel,before,0,NA
-42,not had,before,0,NA
-43,not have,before,0,NA
-44,not know of,before,0,NA
-45,not known to have,before,0,NA
-46,not reveal,before,0,NA
-47,not see,before,0,NA
-48,not to be,before,0,NA
-49,patient was not,before,0,NA
-50,rather than,before,0,NA
-51,resolved,before,0,NA
-52,test for,before,0,NA
-53,to exclude,before,0,NA
-54,unremarkable for,before,0,NA
-55,with no,before,0,NA
-56,without,before,0,NA
-57,without any evidence of,before,0,NA
-58,without evidence,before,0,NA
-59,without indication of,before,0,NA
-60,without sign of,before,0,NA
-61,rules out,before,0,NA
-62,rules him out,before,0,NA
-63,rules her out,before,0,NA
-64,rules the patient out,before,0,NA
-65,rules out for,before,0,NA
-66,rules him out for,before,0,NA
-67,rules her out for,before,0,NA
-68,rules the patient out for,before,0,NA
-69,ruled out,before,0,NA
-70,ruled him out,before,0,NA
-71,ruled her out,before,0,NA
-72,ruled the patient out,before,0,NA
-73,ruled out for,before,0,NA
-74,ruled him out for,before,0,NA
-75,ruled her out for,before,0,NA
-76,ruled the patient out for,before,0,NA
-77,ruled out against,before,0,NA
-78,ruled him out against,before,0,NA
-79,ruled her out against,before,0,NA
-80,ruled the patient out against,before,0,NA
-81,did rule out,before,0,NA
-82,did rule out for,before,0,NA
-83,did rule out against,before,0,NA
-84,did rule him out,before,0,NA
-85,did rule her out,before,0,NA
-86,did rule the patient out,before,0,NA
-87,did rule him out for,before,0,NA
-88,did rule her out for,before,0,NA
-89,did rule him out against,before,0,NA
-90,did rule her out against,before,0,NA
-91,did rule the patient out for,before,0,NA
-92,did rule the patient out against,before,0,NA
-93,can rule out,before,0,NA
-94,can rule out for,before,0,NA
-95,can rule out against,before,0,NA
-96,can rule him out,before,0,NA
-97,can rule her out,before,0,NA
-98,can rule the patient out,before,0,NA
-99,can rule him out for,before,0,NA
-100,can rule her out for,before,0,NA
-101,can rule the patinet out for,before,0,NA
-102,can rule him out against,before,0,NA
-103,can rule her out against,before,0,NA
-104,can rule the patinet out against,before,0,NA
-105,adequate to rule out,before,0,NA
-106,adequate to rule him out,before,0,NA
-107,adequate to rule her out,before,0,NA
-108,adequate to rule the patient out,before,0,NA
-109,adequate to rule out for,before,0,NA
-110,adequate to rule him out for,before,0,NA
-111,adequate to rule her out for,before,0,NA
-112,adequate to rule the patient out for,before,0,NA
-113,adequate to rule the patient out against,before,0,NA
-114,sufficient to rule out,before,0,NA
-115,sufficient to rule him out,before,0,NA
-116,sufficient to rule her out,before,0,NA
-117,sufficient to rule the patient out,before,0,NA
-118,sufficient to rule out for,before,0,NA
-119,sufficient to rule him out for,before,0,NA
-120,sufficient to rule her out for,before,0,NA
-121,sufficient to rule the patient out for,before,0,NA
-122,sufficient to rule out against,before,0,NA
-123,sufficient to rule him out against,before,0,NA
-124,sufficient to rule her out against,before,0,NA
-125,sufficient to rule the patient out against,before,0,NA
-126,rule out,before,0,NA
-127,r/o,before,0,NA
-128,ro,before,0,NA
-129,rule him out,before,0,NA
-130,rule her out,before,0,NA
-131,rule the patient out,before,0,NA
-132,rule out for,before,0,NA
-133,rule him out for,before,0,NA
-134,rule her out for,before,0,NA
-135,rule the patinet out for,before,0,NA
-136,be ruled out for,before,0,NA
-137,should be ruled out for,before,0,NA
-138,ought to be ruled out for,before,0,NA
-139,may be ruled out for,before,0,NA
-140,might be ruled out for,before,0,NA
-141,could be ruled out for,before,0,NA
-142,will be ruled out for,before,0,NA
-143,can be ruled out for,before,0,NA
-144,must be ruled out for,before,0,NA
-145,is to be ruled out for,before,0,NA
-146,what must be ruled out is,before,0,NA
-147,unlikely,after,0,NA
-148,free,after,0,NA
-149,was ruled out,after,0,NA
-150,is ruled out,after,0,NA
-151,are ruled out,after,0,NA
-152,have been ruled out,after,0,NA
-153,has been ruled out,after,0,NA
-154,did not rule out,after,0,NA
-155,not ruled out,after,0,NA
-156,not been ruled out,after,0,NA
-157,being ruled out,after,0,NA
-158,be ruled out,after,0,NA
-159,should be ruled out,after,0,NA
-160,ought to be ruled out,after,0,NA
-161,may be ruled out,after,0,NA
-162,might be ruled out,after,0,NA
-163,could be ruled out,after,0,NA
-164,will be ruled out,after,0,NA
-165,can be ruled out,after,0,NA
-166,must be ruled out,after,0,NA
-167,is to be ruled out,after,0,NA
+"","Negation","Type","Category","Frequency","Examples"
+"1","absence of","before","General",0,NA
+"2","cannot","before","General",0,NA
+"3","cannot see","before","General",0,NA
+"4","checked for","before","General",0,NA
+"5","declined","before","General",0,NA
+"6","declines","before","General",0,NA
+"7","denied","before","General",0,NA
+"8","denies","before","General",0,NA
+"9","denying","before","General",0,NA
+"10","evaluate for","before","General",0,NA
+"11","fails to reveal","before","General",0,NA
+"12","free of","before","General",0,NA
+"13","negative for","before","General",0,NA
+"14","never developed","before","General",0,NA
+"15","never had","before","General",0,NA
+"16","no","before","General",0,NA
+"17","no abnormal","before","General",0,NA
+"18","no cause of","before","General",0,NA
+"19","no complaints of","before","General",0,NA
+"20","no evidence","before","General",0,NA
+"21","no new evidence","before","General",0,NA
+"22","no other evidence","before","General",0,NA
+"23","no evidence to suggest","before","General",0,NA
+"24","no findings of","before","General",0,NA
+"25","no findings to indicate","before","General",0,NA
+"26","no mammographic evidence of","before","General",0,NA
+"27","no new","before","General",0,NA
+"28","no radiographic evidence of","before","General",0,NA
+"29","no sign of","before","General",0,NA
+"30","no significant","before","General",0,NA
+"31","no signs of","before","General",0,NA
+"32","no suggestion of","before","General",0,NA
+"33","no suspicious","before","General",0,NA
+"34","not","before","General",0,NA
+"35","not appear","before","General",0,NA
+"36","not appreciate","before","General",0,NA
+"37","not associated with","before","General",0,NA
+"38","not complain of","before","General",0,NA
+"39","not demonstrate","before","General",0,NA
+"40","not exhibit","before","General",0,NA
+"41","not feel","before","General",0,NA
+"42","not had","before","General",0,NA
+"43","not have","before","General",0,NA
+"44","not know of","before","General",0,NA
+"45","not known to have","before","General",0,NA
+"46","not reveal","before","General",0,NA
+"47","not see","before","General",0,NA
+"48","not to be","before","General",0,NA
+"49","patient was not","before","General",0,NA
+"50","rather than","before","General",0,NA
+"51","resolved","before","General",0,NA
+"52","test for","before","General",0,NA
+"53","to exclude","before","General",0,NA
+"54","unremarkable for","before","General",0,NA
+"55","with no","before","General",0,NA
+"56","without","before","General",0,NA
+"57","without any evidence of","before","General",0,NA
+"58","without evidence","before","General",0,NA
+"59","without indication of","before","General",0,NA
+"60","without sign of","before","General",0,NA
+"61","rules out","before","General",0,NA
+"62","rules him out","before","General",0,NA
+"63","rules her out","before","General",0,NA
+"64","rules the patient out","before","General",0,NA
+"65","rules out for","before","General",0,NA
+"66","rules him out for","before","General",0,NA
+"67","rules her out for","before","General",0,NA
+"68","rules the patient out for","before","General",0,NA
+"69","ruled out","before","General",0,NA
+"70","ruled him out","before","General",0,NA
+"71","ruled her out","before","General",0,NA
+"72","ruled the patient out","before","General",0,NA
+"73","ruled out for","before","General",0,NA
+"74","ruled him out for","before","General",0,NA
+"75","ruled her out for","before","General",0,NA
+"76","ruled the patient out for","before","General",0,NA
+"77","ruled out against","before","General",0,NA
+"78","ruled him out against","before","General",0,NA
+"79","ruled her out against","before","General",0,NA
+"80","ruled the patient out against","before","General",0,NA
+"81","did rule out","before","General",0,NA
+"82","did rule out for","before","General",0,NA
+"83","did rule out against","before","General",0,NA
+"84","did rule him out","before","General",0,NA
+"85","did rule her out","before","General",0,NA
+"86","did rule the patient out","before","General",0,NA
+"87","did rule him out for","before","General",0,NA
+"88","did rule her out for","before","General",0,NA
+"89","did rule him out against","before","General",0,NA
+"90","did rule her out against","before","General",0,NA
+"91","did rule the patient out for","before","General",0,NA
+"92","did rule the patient out against","before","General",0,NA
+"93","can rule out","before","General",0,NA
+"94","can rule out for","before","General",0,NA
+"95","can rule out against","before","General",0,NA
+"96","can rule him out","before","General",0,NA
+"97","can rule her out","before","General",0,NA
+"98","can rule the patient out","before","General",0,NA
+"99","can rule him out for","before","General",0,NA
+"100","can rule her out for","before","General",0,NA
+"101","can rule the patinet out for","before","General",0,NA
+"102","can rule him out against","before","General",0,NA
+"103","can rule her out against","before","General",0,NA
+"104","can rule the patinet out against","before","General",0,NA
+"105","adequate to rule out","before","General",0,NA
+"106","adequate to rule him out","before","General",0,NA
+"107","adequate to rule her out","before","General",0,NA
+"108","adequate to rule the patient out","before","General",0,NA
+"109","adequate to rule out for","before","General",0,NA
+"110","adequate to rule him out for","before","General",0,NA
+"111","adequate to rule her out for","before","General",0,NA
+"112","adequate to rule the patient out for","before","General",0,NA
+"113","adequate to rule the patient out against","before","General",0,NA
+"114","sufficient to rule out","before","General",0,NA
+"115","sufficient to rule him out","before","General",0,NA
+"116","sufficient to rule her out","before","General",0,NA
+"117","sufficient to rule the patient out","before","General",0,NA
+"118","sufficient to rule out for","before","General",0,NA
+"119","sufficient to rule him out for","before","General",0,NA
+"120","sufficient to rule her out for","before","General",0,NA
+"121","sufficient to rule the patient out for","before","General",0,NA
+"122","sufficient to rule out against","before","General",0,NA
+"123","sufficient to rule him out against","before","General",0,NA
+"124","sufficient to rule her out against","before","General",0,NA
+"125","sufficient to rule the patient out against","before","General",0,NA
+"126","rule out","before","General",0,NA
+"127","r/o","before","General",0,NA
+"128","ro","before","General",0,NA
+"129","rule him out","before","General",0,NA
+"130","rule her out","before","General",0,NA
+"131","rule the patient out","before","General",0,NA
+"132","rule out for","before","General",0,NA
+"133","rule him out for","before","General",0,NA
+"134","rule her out for","before","General",0,NA
+"135","rule the patinet out for","before","General",0,NA
+"136","be ruled out for","before","General",0,NA
+"137","should be ruled out for","before","General",0,NA
+"138","ought to be ruled out for","before","General",0,NA
+"139","may be ruled out for","before","General",0,NA
+"140","might be ruled out for","before","General",0,NA
+"141","could be ruled out for","before","General",0,NA
+"142","will be ruled out for","before","General",0,NA
+"143","can be ruled out for","before","General",0,NA
+"144","must be ruled out for","before","General",0,NA
+"145","is to be ruled out for","before","General",0,NA
+"146","what must be ruled out is","before","General",0,NA
+"147","unlikely","after","General",0,NA
+"148","free","after","General",0,NA
+"149","was ruled out","after","General",0,NA
+"150","is ruled out","after","General",0,NA
+"151","are ruled out","after","General",0,NA
+"152","have been ruled out","after","General",0,NA
+"153","has been ruled out","after","General",0,NA
+"154","did not rule out","after","General",0,NA
+"155","not ruled out","after","General",0,NA
+"156","not been ruled out","after","General",0,NA
+"157","being ruled out","after","General",0,NA
+"158","be ruled out","after","General",0,NA
+"159","should be ruled out","after","General",0,NA
+"160","ought to be ruled out","after","General",0,NA
+"161","may be ruled out","after","General",0,NA
+"162","might be ruled out","after","General",0,NA
+"163","could be ruled out","after","General",0,NA
+"164","will be ruled out","after","General",0,NA
+"165","can be ruled out","after","General",0,NA
+"166","must be ruled out","after","General",0,NA
+"167","is to be ruled out","after","General",0,NA
