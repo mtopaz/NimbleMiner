@@ -10,12 +10,13 @@ Rtools35 - Change the default  path  ( C:\RBuildTools ) to  C:\Rtools
 
 2. Restart the computer.
 
-3. Install packages. 
+3. Install packages:  
 
-Open script installer.R in RStudio  
-Run script with help of button "Source"
-Enter the path to folder with two packages (rword2vec and wordVectors) when the script prompts.
-Wait till all packages will be installed
-Restart R session
+- Unzip archives wordVectors.zip and rword2vec.zip
+- Open script installer.R in RStudio  
+- Run script with help of button "Source"
+- Enter the path to folder with two packages (rword2vec and wordVectors) when the script prompts
+- Wait till all packages will be installed
+- Restart R session
 
 4. Open NimbleMiner.R in RStudio and run it by the button "Run"
