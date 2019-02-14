@@ -3599,6 +3599,7 @@ server <- function(input, output, session) {
       svm_gamma_parameter <- 0.5
       svm_kernel_parameter <- "radial"
       parameters_of_model <- paste0("Method: ",input$mlModel_input,", Cost = ",svm_cost_parameter,", Type =",svm_method_parameter,", Kernel = ",svm_kernel_parameter)
+      progress$set(detail = paste0("Training the model...") ,value = 4)   
       model <- train_model(container, "SVM", kernel=svm_kernel_parameter, cost = svm_cost_parameter, method = svm_method_parameter, gamma = svm_gamma_parameter)
       logAction(userId = currentUserId, operation = "Training the model", parameters = parameters_of_model)
       # VIEW THE RESULTS BY CREATING ANALYTICS
@@ -3662,8 +3663,9 @@ server <- function(input, output, session) {
       # Define training and test sets
       x_train <- corpus_df[1:trainingSize,'Note']
       y_train <- corpus_df[1:trainingSize,'Label']
-      x_test <- corpus_df[(trainingSize+1):nrow(corpus_df),'Note']
-      y_test <- corpus_df[(trainingSize+1):nrow(corpus_df),'Label']
+      corpus_df_test <- corpus_df[(trainingSize+1):nrow(corpus_df),]
+      x_test <- corpus_df_test$Note
+      y_test <- corpus_df_test$Label
       
       # Output lengths of testing and training sets
       cat(length(x_train), 'train sequences\n')
