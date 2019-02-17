@@ -15,6 +15,7 @@ library(shinyjs)
 library(RTextTools)
 library(tm) 
 library(xtable)
+library(keras)
 
 # User interface 
 ui <- fluidPage(
@@ -275,7 +276,7 @@ ui <- fluidPage(
                         # Sidebar with a slider input
                         wellPanel(      
                           h1("2. Learn model"),
-                          selectInput('mlModel_input', 'Choose the algorithm:', c("Support Vector Machine (SVM)" = "SVM", "Neural network" = "NNET")),
+                          selectInput('mlModel_input', 'Choose the algorithm:', c("Support Vector Machine (SVM)" = "SVM", "Neural network (LSTM)" = "NNET")),
                           hr(),
                           actionButton("learnModel_click", "Learn a model", icon = icon("play")),
                           hr(),
@@ -286,7 +287,7 @@ ui <- fluidPage(
                         # Show a plot of the generated distribution
                         wellPanel(      
                           h1("3. Predict labels"),
-                          selectInput('mlModelToPredict_input', 'Choose the algorithm:', c("Support Vector Machine (SVM)" = "SVM")),
+                          selectInput('mlModelToPredict_input', 'Choose the algorithm:', c("Support Vector Machine (SVM)" = "SVM", "Neural network (LSTM)" = "NNET")),
                           #selectInput('mlModelToPredict_input', 'Choose the algorithm:', c("Support Vector Machine (SVM)" = "SVM", "Neural network" = "NNET", "Random Forest" = "RF")),
                           fileInput(inputId = 'notesToPredictFile','Please, upload .csv file with column "note":',accept = c("text/csv","text/comma-separated-values,text/plain",".csv"), multiple = FALSE),                          
                           actionButton("predictNotes_click", "Predict", icon = icon("search-plus")),
@@ -2425,6 +2426,9 @@ server <- function(input, output, session) {
 
   }  
   
+  
+  updateStatisticsByLabeledData()
+  
   getCategoriesList<-function(){
     filename <- paste0(app_dir,"simclins_tree.csv")
     simclins_tree_json <- readLines(filename,encoding="UTF-8")
@@ -3556,31 +3560,30 @@ server <- function(input, output, session) {
   observeEvent(input$learnModel_click, {
     progress <- shiny::Progress$new(min=1, max=5)
     
-    progress$set(message  = "Learning model", detail = "Reading the labeled data..." ,value = 1)       
-    corpus_df <-  read.csv(paste0(app_dir,"corpus.csv"),header = TRUE, stringsAsFactors=FALSE, comment.char = "", fileEncoding = "UTF-8")
+    progress$set(message  = "Learning model", detail = "Reading the labeled data..." ,value = 1)    
     
+    corpus_df <-  read.csv(paste0(app_dir,"corpus.csv"),header = TRUE, stringsAsFactors=FALSE, comment.char = "", fileEncoding = "UTF-8")
     corpus_df <- clear_corpus (corpus_df)
+    trainingSize <- round(nrow(corpus_df)*0.75,0)     
 
-    progress$set(detail = "Train the model..." ,value = 4)       
+    progress$set(detail = "Train the model..." ,value = 2)       
     
     dir.create(file.path(app_dir, "ml"), showWarnings = FALSE)
     
-    
-    trainingSize <- round(nrow(corpus_df)*0.75,0) 
-    
-    # train a SVM Model    
+    # train a SVM Model (RTextTools package)   
     if(input$mlModel_input=="SVM"){
       
       progress$set(detail = paste0(nrow(corpus_df)," notes were found in the file. DTM building...") ,value = 2)       
       
+      # fix error in package
       tmpfun <- get("create_matrix", envir = asNamespace("RTextTools"))
       environment(create_matrix) <- environment(tmpfun)
       assignInNamespace("create_matrix", create_matrix, ns = "RTextTools")
 
       dtMatrix <- create_matrix(corpus_df$Note, toLower = FALSE, removeNumbers = TRUE,language="he", removeStopwords = FALSE, removePunctuation=TRUE, stripWhitespace=TRUE, ngramLength =1)
-      
+
+      #debug info - print first Note and its most frequently terms
       freqTerms <- findFreqTerms(dtMatrix)
-      
       print(corpus_df[1,'Note'])
       firtsDoc_freqTerms <- findMostFreqTerms(dtMatrix,10L)
       print(firtsDoc_freqTerms[[1]])
@@ -3589,7 +3592,6 @@ server <- function(input, output, session) {
       write.csv(firtsDoc_freqTerms[[1]],file=paste0(app_dir,"ml/firtsDoc_freqTerms_",input$mlModel_input,".csv"), fileEncoding="UTF-8")
 
       # Configure the training data
-      
       progress$set(detail = paste0("Configure the training data with ",trainingSize," notes.") ,value = 3)       
       container <- create_container(dtMatrix, as.numeric(as.vector(corpus_df$Label)), trainSize=1:trainingSize, testSize =(trainingSize+1):nrow(corpus_df) , virgin=FALSE)
       
@@ -3601,55 +3603,49 @@ server <- function(input, output, session) {
       parameters_of_model <- paste0("Method: ",input$mlModel_input,", Cost = ",svm_cost_parameter,", Type =",svm_method_parameter,", Kernel = ",svm_kernel_parameter)
       progress$set(detail = paste0("Training the model...") ,value = 4)   
       model <- train_model(container, "SVM", kernel=svm_kernel_parameter, cost = svm_cost_parameter, method = svm_method_parameter, gamma = svm_gamma_parameter)
-      logAction(userId = currentUserId, operation = "Training the model", parameters = parameters_of_model)
-      # VIEW THE RESULTS BY CREATING ANALYTICS
-      # analytics <- create_analytics(container, predictedLabels)
-      # 
-      #   # WRITE OUT THE DATA TO A CSV
-      #   write.csv(analytics@algorithm_summary,paste0(app_dir,"ml/SampleData_AlgorithmSummary_",input$mlModel_input,".csv"))
-      #   write.csv(analytics@label_summary,paste0(app_dir,"ml/SampleData_LabelSummary_",input$mlModel_input,"SVM.csv"))
-      #   write.csv(predictionData,file = paste0(app_dir,"ml/prediction_test_results_",input$mlModel_input,".csv"))
-      # 
-      #   output$algorythms_summary_table  <- DT::renderDataTable(analytics@algorithm_summary,  escape = FALSE)
-      #   print(analytics@algorithm_summary)
-      #   precision_results <- paste0("TRUE -  ",analytics@algorithm_summary["1","SVM_PRECISION"],", FALSE - ",analytics@algorithm_summary["0","SVM_PRECISION"])
-      #   recall_results <- paste0("TRUE -  ",analytics@algorithm_summary["1","SVM_RECALL"],", FALSE - ",analytics@algorithm_summary["0","SVM_RECALL"])
-      #   progress$close()
-      # 
-      #   test_results_of_model <- paste0("Precision: ",precision_results,"; Recall: ",recall_results)
-      # 
-      # library(e1071)
-      # tune_results <-tune(svm,train.x =container@training_matrix , train.y  = container@training_codes, gamma = 2^(-1:1), cost = 2^(2:4))
-      # model <- tune_results$best.model
-      # print(summary(model))
-      # print("best parameters:")
-      # print(tune_results$best.parameters)
-      # print("best performance:")
-      # print(tune_results$best.performance)
-      # parameters_of_model <- paste0("Method: ",input$mlModel_input," (tuning)")
-      # (table(Fact = corpus_df$Label, Predicted = predict(model)))
-    # } else if(input$mlModel_input=="RF"){
-    #   
-    #   rf_ntree_parameter <- 200
-    #   parameters_of_model <- paste0("Method: ",input$mlModel_input,", ntree = ",rf_ntree_parameter)            
-    #   model <- train_model(container, "RF", ntree = rf_ntree_parameter)
-    #   save(model,file=paste0(app_dir,"ml/trainedModel_",input$mlModel_input,".Rd"))
-    #   save(dtMatrix,file=paste0(app_dir,"ml/originalMatrix.Rd"))
-    #   
-    #   predictionData <- corpus_df[(trainingSize+1):(nrow(corpus_df)),]
-    #   rm(corpus_df)
-    # 
-    #   progress$set(detail = "Test the model..." ,value = 5) 
-    #   predictedLabels <- classify_model(container, model)
-    #   predictionData$Predicted_labels <- predictedLabels
-    # 
+      
+      progress$set(detail = "Save the model..." ,value = 5) 
+      save(model,file=paste0(app_dir,"ml/trainedModel_",input$mlModel_input,".Rd"))
+      save(dtMatrix,file=paste0(app_dir,"ml/originalMatrix.Rd"))
+      
+      predictionData <- corpus_df[(trainingSize+1):(nrow(corpus_df)),]
+      rm(corpus_df)
 
+      progress$set(detail = "Test the model..." ,value = 6) 
+      predictedLabels <- classify_model(container, model)
+      predictionData$Predicted_labels <- predictedLabels
       
-    }   else if(input$mlModel_input=="NNET"){
+  
+      # VIEW THE RESULTS BY CREATING ANALYTICS
+      analytics <- create_analytics(container, predictedLabels)
       
-      #https://tensorflow.rstudio.com/keras/articles/examples/imdb_bidirectional_lstm.html
+      # RESULTS WILL BE REPORTED BACK IN THE analytics VARIABLE.
+      # analytics@algorithm_summary: SUMMARY OF PRECISION, RECALL, F-SCORES, AND ACCURACY SORTED BY TOPIC CODE FOR EACH ALGORITHM
+      # analytics@label_summary: SUMMARY OF LABEL (e.g. TOPIC) ACCURACY
+      # analytics@document_summary: RAW SUMMARY OF ALL DATA AND SCORING
+      # analytics@ensemble_summary: SUMMARY OF ENSEMBLE PRECISION/COVERAGE. USES THE n VARIABLE PASSED INTO create_analytics()
+      
+      # WRITE OUT THE DATA TO A CSV
+      write.csv(analytics@algorithm_summary,paste0(app_dir,"ml/SampleData_AlgorithmSummary_",input$mlModel_input,".csv"))
+      write.csv(analytics@label_summary,paste0(app_dir,"ml/SampleData_LabelSummary_",input$mlModel_input,"SVM.csv"))
+      write.csv(predictionData,file = paste0(app_dir,"ml/prediction_test_results_",input$mlModel_input,".csv")) 
+      
+      output$algorythms_summary_table  <- DT::renderDataTable(analytics@algorithm_summary,  escape = FALSE)  
+      print(analytics@algorithm_summary)
+      precision_results <- paste0("TRUE -  ",analytics@algorithm_summary["1","SVM_PRECISION"],", FALSE - ",analytics@algorithm_summary["0","SVM_PRECISION"])
+      recall_results <- paste0("TRUE -  ",analytics@algorithm_summary["1","SVM_RECALL"],", FALSE - ",analytics@algorithm_summary["0","SVM_RECALL"])
+
+      test_results_of_model <- paste0("Precision: ",precision_results,"; Recall: ",recall_results)
+      logAction(userId = currentUserId, operation = "Training the model", parameters = parameters_of_model, valueAfter=test_results_of_model)
+      showModal(modalDialog(title = "Information",  paste0("The model is ready ! ",parameters_of_model,". Test results - ",test_results_of_model,". Labeled test data were saved in the file 'ml/prediction_test_results_",input$mlModel_input,".csv'."),easyClose = TRUE))
+      
+ 
+    }   
+    # train a NNET Model (keras package, see as source https://tensorflow.rstudio.com/keras/articles/examples/imdb_bidirectional_lstm.html)   
+    else if(input$mlModel_input=="NNET"){
+      
       # should be installed python and keras on computer before
-      library(keras)
+      
       
       # Define maximum number of input features
       max_features <- 1000
@@ -3659,7 +3655,8 @@ server <- function(input, output, session) {
       maxlen <- 200
       
       batch_size <- 32
-
+      
+      progress$set(detail = paste0("Configure the training data with ",trainingSize," notes.") ,value = 3) 
       # Define training and test sets
       x_train <- corpus_df[1:trainingSize,'Note']
       y_train <- corpus_df[1:trainingSize,'Label']
@@ -3671,24 +3668,17 @@ server <- function(input, output, session) {
       cat(length(x_train), 'train sequences\n')
       cat(length(x_test), 'test sequences\n')
 
-      cat('Pad sequences (samples x time)\n')
-      
+      # Pad sequences
       tok <- text_tokenizer(num_words=max_features)
       fit_text_tokenizer(tok,x_train)
-      
       sequences = texts_to_sequences(tok,x_train)
       x_train = pad_sequences(sequences,maxlen=maxlen)
-      
       test_sequences = texts_to_sequences(tok,x_test)
       x_test <- pad_sequences(test_sequences, maxlen = maxlen)
       
       # Output dimensions of training and test inputs
       cat('x_train shape:', dim(x_train), '\n')
       cat('x_test shape:', dim(x_test), '\n')
-      
-      fl_buildnewmodel = T
-      
-      if (fl_buildnewmodel) {
       
       # Initialize model
 
@@ -3703,24 +3693,27 @@ server <- function(input, output, session) {
         layer_dropout(rate = 0.5) %>% 
         layer_dense(units = 1, activation = 'sigmoid')
 
-      # Try using different optimizers and different optimizer configs
       model %>% compile(
         loss = 'binary_crossentropy',
         optimizer = 'adam',
         metrics = c('accuracy')
       )
       
-      # Train model over four epochs
-      cat('Train...\n')
+      # Train model 
+      progress$set(detail = paste0("Training the model...") ,value = 4) 
       model %>% keras::fit(
         x_train, y_train,
         batch_size = batch_size,
-        epochs = 4,
+        epochs = 10,
         validation_data = list(x_test, y_test)
       )
-      
-      # Train model over four epochs
-      cat('Predict...\n')
+
+      # Save model
+      progress$set(detail = "Save the model..." ,value = 5) 
+      model %>% save_model_hdf5(paste0(app_dir,"ml/trainedModel_",input$mlModel_input,".h5"))
+
+      # Test model
+      progress$set(detail = "Test the model..." ,value = 6)
       predictedLabels <- model %>% predict_classes(
         x_test,
         batch_size = batch_size,
@@ -3741,103 +3734,151 @@ server <- function(input, output, session) {
       test_results_of_model <- paste0("Precision: ",precision_results,"; Recall: ",recall_results)
       parameters_of_model <- "Bidirectional LSTM, 1000 features, maxlen = 100, keras package"
       
-      progress$set(detail = "Save the model..." ,value = 6) 
-      model %>% save_model_hdf5(paste0(app_dir,"ml/trainedModel_",input$mlModel_input,".h5"))
       logAction(userId = currentUserId, operation = "Training the model", parameters = parameters_of_model, valueAfter=test_results_of_model)
-      } else model <- load_model_hdf5(paste0(app_dir,"ml/trainedModel_",input$mlModel_input,".h5"))
-      
-
+      showModal(modalDialog(title = "Information",  paste0("The model is ready ! ",parameters_of_model,". Labeled test data were saved in the file 'ml/prediction_test_results_",input$mlModel_input,".csv'."),easyClose = TRUE))
     }  
 
     progress$close()
-    
-    
-    showModal(modalDialog(title = "Information",  paste0("The model is ready ! ",parameters_of_model,". Labeled test data were saved in the file 'ml/prediction_test_results_",input$mlModel_input,".csv'."),easyClose = TRUE))
-    
   }) 
+  
+  
+  predictByNNET <- function(notes,batch_size = 32,max_features = 1000,maxlen = 200){
+
+
+    modelFileName <- paste0(app_dir,"ml/trainedModel_NNET.h5")
+    progress <- shiny::Progress$new(min=1, max=3)
+    progress$set(message  = "Predicting data", detail = "Loading the model..." ,value = 1)       
+    model <- load_model_hdf5(modelFileName)
+
+    # Pad sequences
+
+    tok <- text_tokenizer(num_words=max_features)
+    fit_text_tokenizer(tok,notes)
+    sequences = texts_to_sequences(tok,notes)
+    notes = pad_sequences(sequences,maxlen=maxlen)    
+
+    progress$set(message  = "Predicting data", detail = "New data classification..." ,value = 3)  
+    result <- predict_classes(
+      model,
+      notes,
+      batch_size = batch_size,
+      verbose = 1
+    )
+    progress$close() 
+    result
+  }
   
   
   # prediction (only for SVM now)
   observeEvent(input$predictNotes_click, {
     notesToPredictFile <- input$notesToPredictFile
-    modelFileName <- paste0(app_dir,"ml/trainedModel_",input$mlModelToPredict_input,".Rd")
-    matrixFileName <- paste0(app_dir,"ml/originalMatrix.Rd")
     
     if (is.null(notesToPredictFile)) {
       showModal(modalDialog(title = "Error Message",  "Please specify the file with the notes to predict the label!",easyClose = TRUE))
-    } else if((!file.exists(modelFileName))) {
-      showModal(modalDialog(title = "Error Message",  paste0("The model for the method ",input$mlModelToPredict_input," is not found! Please, train the model in previous item.",easyClose = TRUE)))
-    } else if((!file.exists(matrixFileName))) {
-      showModal(modalDialog(title = "Error Message",  paste0("The DTM matrix is not found! Please, train the model in previous item.",easyClose = TRUE)))
-    } else {
-      progress <- shiny::Progress$new(min=1, max=3)
-      progress$set(message  = "Predicting data", detail = "Reading notes, model and DTM..." ,value = 1)       
+    } else {  
       
-      load(modelFileName)
-      load(matrixFileName)      
       predictionData <- read.csv(notesToPredictFile$datapath,header = TRUE, stringsAsFactors=FALSE,comment.char = "", encoding = "UTF-8")      
-      
-      progress$set(message  = "Predicting data", detail = "Creating a prediction document term matrix..." ,value = 2)   
       colnames(predictionData)<-tolower(colnames(predictionData))
       
       if (is.null(predictionData$note)){
         showModal(modalDialog(title = "Error Message",  "There is no column 'note' in the uploaded file.",easyClose = TRUE))
-      } else {
-        # create a prediction document term matrix
-        # predMatrix <- create_matrix(predictionData$note, originalMatrix=dtMatrix, toLower = FALSE, language="he", removeNumbers = TRUE, removeStopwords = FALSE,removePunctuation=TRUE, stripWhitespace=TRUE, weighting=tm::weightTfIdf,ngramLength =1)
-        predMatrix <- create_matrix(predictionData$note, originalMatrix=dtMatrix, toLower = FALSE, language="en", removeNumbers = TRUE, removeStopwords = FALSE,removePunctuation=TRUE, stripWhitespace=TRUE,ngramLength =1)
-        
-        pred_freqTerms <- findFreqTerms(predMatrix)
-        
-        print(predictionData[1,'note'])
-        pred_firtsDoc_freqTerms <- findMostFreqTerms(predMatrix,10L)
-        print(pred_firtsDoc_freqTerms[[1]])
-        
-        write.csv(pred_freqTerms,file=paste0(app_dir,"ml/pred_freqTerms_",input$mlModel_input,".csv"), fileEncoding="UTF-8")
-        write.csv(pred_firtsDoc_freqTerms[[1]],file=paste0(app_dir,"ml/pred_firtsDoc_freqTerms_",input$mlModel_input,".csv"), fileEncoding="UTF-8")
-        
-        # create the corresponding container
-        predSize = length(predictionData$note)
-        predictionContainer <- create_container(predMatrix, labels=rep(0,predSize), testSize=1:predSize, virgin=FALSE)
-        
-        # predict
-        progress$set(message  = "Predicting data", detail = "New data classification..." ,value = 3)   
-        predictedLabels <- classify_model(predictionContainer, model)
-        
-        predictedLebel_colName <- paste0(toupper(input$mlModelToPredict_input),"_LABEL")
-        
-        predictedLabels[,predictedLebel_colName] <- ifelse(predictedLabels[,predictedLebel_colName]=="0",FALSE,TRUE)
-        predictionData$Predicted_labels <- predictedLabels[,predictedLebel_colName]
-        
-        
-        fileDateTime <- format(Sys.time(),"%Y-%m-%d_%H-%M")
-        write.csv(predictionData,file = paste0(app_dir,"ml/prediction_results_",input$mlModelToPredict_input,"_",fileDateTime,".csv"),fileEncoding = "UTF-8") 
-        
-        output$predicted_results_table  <- DT::renderDataTable(predictionData,  escape = FALSE)  
-        logAction(userId = currentUserId, operation = "Prediction", parameters = paste0("Method: ",input$mlModelToPredict_input))        
-        showModal(modalDialog(title = "Information",  paste0("The prediction is completed.  Detailed results were saved in the file 'ml/prediction_results_",input$mlModelToPredict_input,"_",fileDateTime,".csv'."),easyClose = TRUE))        
-        
-        # for gold standard data        
-        # library(caret)
-        # 
-        # lvs <- c(TRUE, FALSE)
-        
-        # ReferenceValue_colName <- 'Label'
-        # 
-        # predictionData[,ReferenceValue_colName] <- ifelse(predictionData[,ReferenceValue_colName]==F,FALSE,TRUE)
-        # tbl_predicted_labeles <- factor(predictionData$Predicted_labels, levels = lvs)
-        # tbl_truth_labeles <- factor(predictionData[,ReferenceValue_colName],levels = lvs)
-        # 
-        # precision_results <- round(precision(data = tbl_predicted_labeles, reference = tbl_truth_labeles),2)
-        # recall_results <- round(recall(data = tbl_predicted_labeles, reference = tbl_truth_labeles),2)
-        # logAction(userId = currentUserId, operation = "Prediction", parameters = paste0("Method: ",input$mlModelToPredict_input,", Column name of reference value - ",ReferenceValue_colName), valueAfter=paste0("Precision = ",precision_results,", recall=",recall_results))
-        # showModal(modalDialog(title = "Information",  paste0("The prediction is completed (Precision = ",precision_results,", recall=",recall_results,").  Detailed results were saved in the file 'ml/prediction_results_",input$mlModelToPredict_input,"_",fileDateTime,".csv'."),easyClose = TRUE))
-        
-        progress$close()        
-        
-      }
-      
-    }
+      } else 
+        {
+          
+          
+          
+           if (input$mlModelToPredict_input=="NNET"){
+             predictedLabels <- predictByNNET(predictionData$note,32)
+            } else {
+              progress <- shiny::Progress$new(min=1, max=3)
+                matrixFileName <- paste0(app_dir,"ml/originalMatrix.Rd")
+                modelFileName <- paste0(app_dir,"ml/trainedModel_",input$mlModelToPredict_input,".Rd")
+                
+                if((!file.exists(modelFileName))) {
+                  showModal(modalDialog(title = "Error Message",  paste0("The model for the method ",input$mlModelToPredict_input," is not found! Please, train the model in previous item.",easyClose = TRUE)))
+                } else if((!file.exists(matrixFileName))) {
+                  showModal(modalDialog(title = "Error Message",  paste0("The DTM matrix is not found! Please, train the model in previous item.",easyClose = TRUE)))
+                } else {
+            
+                  
+                  progress$set(message  = "Predicting data", detail = "Reading notes, model and DTM..." ,value = 1)       
+                  
+                  load(modelFileName)
+                  load(matrixFileName)      
+                  
+                  progress$set(message  = "Predicting data", detail = "Creating a prediction document term matrix..." ,value = 2)   
+          
+                    # create a prediction document term matrix
+                    # predMatrix <- create_matrix(predictionData$note, originalMatrix=dtMatrix, toLower = FALSE, language="he", removeNumbers = TRUE, removeStopwords = FALSE,removePunctuation=TRUE, stripWhitespace=TRUE, weighting=tm::weightTfIdf,ngramLength =1)
+                    predMatrix <- create_matrix(predictionData$note, originalMatrix=dtMatrix, toLower = FALSE, language="en", removeNumbers = TRUE, removeStopwords = FALSE,removePunctuation=TRUE, stripWhitespace=TRUE,ngramLength =1)
+                    
+                    pred_freqTerms <- findFreqTerms(predMatrix)
+                    
+                    print(predictionData[1,'note'])
+                    pred_firtsDoc_freqTerms <- findMostFreqTerms(predMatrix,10L)
+                    print(pred_firtsDoc_freqTerms[[1]])
+                    
+                    write.csv(pred_freqTerms,file=paste0(app_dir,"ml/pred_freqTerms_",input$mlModel_input,".csv"), fileEncoding="UTF-8")
+                    write.csv(pred_firtsDoc_freqTerms[[1]],file=paste0(app_dir,"ml/pred_firtsDoc_freqTerms_",input$mlModel_input,".csv"), fileEncoding="UTF-8")
+                    
+                    # create the corresponding container
+                    predSize = length(predictionData$note)
+                    predictionContainer <- create_container(predMatrix, labels=rep(0,predSize), testSize=1:predSize, virgin=FALSE)
+                    
+                    # predict
+                    progress$set(message  = "Predicting data", detail = "New data classification..." ,value = 3)   
+                    predictedLabels <- classify_model(predictionContainer, model)
+                    
+                    predictedLebel_colName <- paste0(toupper(input$mlModelToPredict_input),"_LABEL")
+                    
+                    predictedLabels[,predictedLebel_colName] <- ifelse(predictedLabels[,predictedLebel_colName]=="0",FALSE,TRUE)
+                    predictionData$Predicted_labels <- predictedLabels[,predictedLebel_colName]
+                    
+                    
+                    fileDateTime <- format(Sys.time(),"%Y-%m-%d_%H-%M")
+                    write.csv(predictionData,file = paste0(app_dir,"ml/prediction_results_",input$mlModelToPredict_input,"_",fileDateTime,".csv"),fileEncoding = "UTF-8") 
+                    
+                    output$predicted_results_table  <- DT::renderDataTable(predictionData,  escape = FALSE)  
+                    logAction(userId = currentUserId, operation = "Prediction", parameters = paste0("Method: ",input$mlModelToPredict_input))        
+                    showModal(modalDialog(title = "Information",  paste0("The prediction is completed.  Detailed results were saved in the file 'ml/prediction_results_",input$mlModelToPredict_input,"_",fileDateTime,".csv'."),easyClose = TRUE))        
+                    progress$close() 
+                    # for gold standard data        
+                    # library(caret)
+                    # 
+                    # lvs <- c(TRUE, FALSE)
+                    
+                    # ReferenceValue_colName <- 'Label'
+                    # 
+                    # predictionData[,ReferenceValue_colName] <- ifelse(predictionData[,ReferenceValue_colName]==F,FALSE,TRUE)
+                    # tbl_predicted_labeles <- factor(predictionData$Predicted_labels, levels = lvs)
+                    # tbl_truth_labeles <- factor(predictionData[,ReferenceValue_colName],levels = lvs)
+                    # 
+                    # precision_results <- round(precision(data = tbl_predicted_labeles, reference = tbl_truth_labeles),2)
+                    # recall_results <- round(recall(data = tbl_predicted_labeles, reference = tbl_truth_labeles),2)
+                    # logAction(userId = currentUserId, operation = "Prediction", parameters = paste0("Method: ",input$mlModelToPredict_input,", Column name of reference value - ",ReferenceValue_colName), valueAfter=paste0("Precision = ",precision_results,", recall=",recall_results))
+                    # showModal(modalDialog(title = "Information",  paste0("The prediction is completed (Precision = ",precision_results,", recall=",recall_results,").  Detailed results were saved in the file 'ml/prediction_results_",input$mlModelToPredict_input,"_",fileDateTime,".csv'."),easyClose = TRUE))
+
+            } # DTM matrix is not found
+          } # predict by SVM (from RTextTool package) 
+          
+          
+          predictedLebel_colName <- paste0(toupper(input$mlModelToPredict_input),"_LABEL")
+          
+          predictionData[,predictedLebel_colName] <- predictedLabels
+          predictionData[,predictedLebel_colName] <- ifelse(predictionData[,predictedLebel_colName]=="0",FALSE,TRUE)
+
+
+          fileDateTime <- format(Sys.time(),"%Y-%m-%d_%H-%M")
+          write.csv(predictionData,file = paste0(app_dir,"ml/prediction_results_",input$mlModelToPredict_input,"_",fileDateTime,".csv"),fileEncoding = "UTF-8") 
+          
+          output$predicted_results_table  <- DT::renderDataTable(predictionData,  escape = FALSE)  
+          logAction(userId = currentUserId, operation = "Prediction", parameters = paste0("Method: ",input$mlModelToPredict_input))        
+          showModal(modalDialog(title = "Information",  paste0("The prediction is completed.  Detailed results were saved in the file 'ml/prediction_results_",input$mlModelToPredict_input,"_",fileDateTime,".csv'."),easyClose = TRUE))        
+          
+                 
+          
+        } # check for column 'note' in file with data to predict
+      } # check for file with data to predict
   })
       
       
