@@ -15,7 +15,7 @@ library(shinyjs)
 library(RTextTools)
 library(tm)
 library(xtable)
-library(keras)
+#library(keras)
 library(rword2vec)
 
 # User interface
@@ -1561,7 +1561,7 @@ server <- function(input, output, session) {
     if(Sys.info()['sysname']=='Windows') {
       win_word2vec(input_filename, output_filename,binary,cbow, num_threads, num_features, window, min_count, sample, classes)
     } else {
-      rword2vec::word2vec(train_file = input_filename,output_file = output_filename,binary = binary,cbow = 0, num_threads = num_threads,window = window,layer1_size = num_features,min_count = min_count,sample = sample,classes = classes)
+      wordVectors::train_word2vec(train_file = input_filename,output_file = output_filename,cbow = 0, threads = num_threads,window = window,vectors = num_features,min_count = min_count,classes = classes, force = TRUE)
     }
   }
   #############################################################################################################
@@ -1575,8 +1575,8 @@ server <- function(input, output, session) {
     if(Sys.info()['sysname']=='Windows') {
       win_word2phrase(input_filename, output_filename,min_count,threshold)
     } else {
-      rword2vec::word2phrase(train_file = input_filename,output_file = output_filename,min_count = min_count, threshold = threshold)
-    }
+       wordVectors::word2phrase(train_file = input_filename,output_file = output_filename,min_count = min_count, threshold = threshold, force = TRUE)
+   }
   }
   #############################################################################################################
   # Function buildModel_word2vec - build word2vec word embedding model
