@@ -6,7 +6,7 @@ packageslInstallation <- function(names_of_packages){
 }
 
 
-packages <- c("shiny", "stringi", "data.table", "DT", "shinythemes", "ggplot2", "readr", "shinyTree", "shinyjs", "RTextTools", "tm", "xtable", "tau", "stopwords", "caret","devtools")
+packages <- c("shiny", "stringi", "data.table", "DT", "keras", "shinythemes", "ggplot2", "readr", "shinyTree", "shinyjs", "RTextTools", "tm", "xtable", "tau", "stopwords", "caret","devtools")
 packageslInstallation(packages)
 
 
@@ -21,5 +21,10 @@ packages_dir <- readLines(con=stdin(),1)
 
 library(devtools)
 
-install(paste0(packages_dir,"\\rword2vec"))
-install(paste0(packages_dir,"\\wordVectors"))
+if(Sys.info()['sysname']=='Windows'){
+  install(paste0(packages_dir,"\\rword2vec"))
+  install(paste0(packages_dir,"\\wordVectors"))
+} else {
+  install(paste0(packages_dir,"/word2vec"))
+  install(paste0(packages_dir,"/wordVectors"))  
+}  
