@@ -4,10 +4,11 @@ NimbleMiner: a software that allows clinicians to interact with word embedding m
 To run the application, please follow these steps:
 
 1. Install base software:
-R-3.5.0-win
-RStudio 1.1.447 or later
-Rtools35 - Change the default  path  ( C:\RBuildTools ) to  C:\Rtools
-
+* R-3.5.0-win
+* RStudio 1.1.447 or later
+* devtools: 
+   * On windows:  Rtools35 - Change the default  path  ( C:\RBuildTools ) to  C:\Rtools
+   * On Mac: [Xcode command line tools](https://developer.apple.com/downloads).
 2. Restart the computer.
 
 3. Install packages:  
