@@ -15,7 +15,7 @@ library(shinyjs)
 library(RTextTools)
 library(tm)
 library(xtable)
-#library(keras)
+library(keras)
 library(rword2vec)
 
 # User interface
