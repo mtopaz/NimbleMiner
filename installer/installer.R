@@ -20,7 +20,7 @@ if(Sys.info()['sysname']=='Windows'){
   install(paste0(packages_dir,"\\wordVectors"))
   install(paste0(packages_dir,"\\RTextTools"))
 } else {
-  install(paste0(packages_dir,"/word2vec"))
+  install(paste0(packages_dir,"/rword2vec"))
   install(paste0(packages_dir,"/wordVectors"))
   install(paste0(packages_dir,"/RTextTools"))  
 }  
