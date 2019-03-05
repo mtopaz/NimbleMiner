@@ -13,10 +13,10 @@ To run the application, please follow these steps:
 
 3. Install packages:  
 
-- Unzip archives wordVectors.zip and rword2vec.zip
+- Unzip archives wordVectors.zip, rword2vec.zip and RTextTools.tar.gz
 - Open script installer.R in RStudio  
 - Run script with help of button "Source"
-- Enter the path to folder with two packages (rword2vec and wordVectors) when the script prompts
+- Enter the path to folder with 3 packages (rword2vec, wordVectors and RTextTools) when the script prompts
 - Wait till all packages will be installed
 - Restart R session
 
