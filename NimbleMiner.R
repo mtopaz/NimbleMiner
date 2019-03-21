@@ -3848,6 +3848,7 @@ server <- function(input, output, session) {
     fl_selectAllSimilar_terms <<- FALSE
     fl_deselectAllSimilar_terms <<- FALSE
     fl_selectAllNewFeatures <<- FALSE
+    fl_next_search_in_process<<- FALSE
     
     userSettings <<- reactiveValues(selectedCategory = getSavedSelectedCategory())
     updateTabsetPanel(session, "headerNavBar", selected = "2. Simclin explorer")
