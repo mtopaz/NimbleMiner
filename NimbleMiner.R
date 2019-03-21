@@ -1,5 +1,5 @@
 # NimbleMiner: a software that allows clinicians to interact with word embedding models (skip-gram models - word2vec by package rword2vec) to rapidly create lexicons of similar terms.
-# version: 0.47 (Model building, Search of similar terms, Negations (with exceptions), Irrelevant terms, Machine learning by SVM and LSTM)
+# version: 0.48 (Model building, Search of similar terms, Negations (with exceptions), Irrelevant terms, Machine learning by SVM and LSTM)
 #####################################
 
 library(shiny)
@@ -79,7 +79,7 @@ ui <- fluidPage(
                                               icon = icon("keyboard-o")
                                      ),
                                      tabPanel("Load new simclins from file",
-                                              fileInput("loadNewSimclinsFromCSV", label = "Please, upload .csv file with one column of simclins",accept = c("text/csv",
+                                              fileInput("loadNewSimclinsFromCSV", label = "Please, upload .csv file with one column of simclins for every category. Specify category title in the column",accept = c("text/csv",
                                                                                                                                                             "text/comma-separated-values,text/plain",".csv")),
                                               actionButton("loadNewSimclinsFromCSV_click", "Upload", icon = icon("upload")),
                                               icon = icon("file-text-o")
@@ -119,6 +119,8 @@ ui <- fluidPage(
                           verbatimTextOutput('selected_terms'),
                           actionButton("saveAsSimclins_click", "Save selected similar terms as simclins", icon = icon("arrow-up")),
                           actionButton("clearSimilar_terms_click", "Clear all unselected similar terms", icon = icon("trash")),
+                          hr(),
+                          actionButton("nextSearch_click", "Save & search again", icon = icon("search-plus")),
                           textInput( inputId = 'lastClickId', label = 'lastClickId' ),
                           textInput( inputId = 'lastClickSimilarTermId', label = 'lastClickSimilarTermId' )
                           
@@ -824,7 +826,7 @@ server <- function(input, output, session) {
   #############################################################################################################
   # Function addNewSimclin - adds the new record to the simclin's list
   #############################################################################################################
-  addNewSimclin <- function(new_simclin_str,df_new_simclins,category = NULL,fl_show_msg_about_duplicates = TRUE ){
+  addNewSimclin <- function(new_simclin_str,df_new_simclins,category = NULL,fl_show_msg_about_duplicates = TRUE, fl_from_file = FALSE ){
     
     if(nrow(df_simclins)>0 && any(df_simclins[df_simclins[,'Category']==category,]$Simclins==new_simclin_str)) {
       if (fl_show_msg_about_duplicates)
@@ -837,6 +839,13 @@ server <- function(input, output, session) {
       new_simclin_str = removePunctuation(new_simclin_str,preserve_intra_word_contractions = FALSE,preserve_intra_word_dashes = FALSE,ucp = TRUE)
       new_simclin_str = gsub("[[:space:]]", "_", trimws(new_simclin_str))
       new_simclin_str=stri_trans_tolower(new_simclin_str)
+      
+      if(new_simclin_str=="") {
+        if (fl_show_msg_about_duplicates)
+          showModal(modalDialog(title = "Error message",  paste0("The simclin is empty!"),easyClose = TRUE))
+        return(FALSE)
+      } 
+      
       cat("Add new simclin: ",new_simclin_str)
       
       #add button 'Examples'
@@ -847,8 +856,10 @@ server <- function(input, output, session) {
         df_simclins <<- newSimclin_row
       else df_simclins<<-rbind(df_simclins,newSimclin_row)
       #clean the input control
-      updateTextInput(session,"newWord_input", value = " ")
-      refreshTable('simclins')
+      if(!fl_from_file){
+        updateTextInput(session,"newWord_input", value = " ")
+        refreshTable('simclins')
+      }  
       return(TRUE)
     }
   }
@@ -988,7 +999,10 @@ server <- function(input, output, session) {
           fl_deselectAllSimilar_terms <<- FALSE
           selected_rows <- NULL
         } else{
-          selected_rows <- c(input$similar_terms_table_rows_selected,is_lexical_variant_indx)
+          if (fl_next_search_in_process)
+            selected_rows <- c(is_lexical_variant_indx)
+          else selected_rows <- c(input$similar_terms_table_rows_selected,is_lexical_variant_indx)
+          
           selected_rows <- unique(selected_rows)
           selected_rows <-sort(selected_rows)
         }
@@ -1394,42 +1408,57 @@ server <- function(input, output, session) {
   #############################################################################################################
   # Function TextPreprocess - preprocessing text before training word embedding model
   #############################################################################################################  
-  TextPreprocess <- function(fileName = 'train.txt', length_of_train_text_limit=1000000000, fl_remove_numbers = TRUE, fl_to_lower = TRUE){
+  TextPreprocess <- function(fileName_in = 'train.txt',fileName_out = 'train1.txt', length_of_text_chunk=5e7, fl_remove_numbers = TRUE, fl_to_lower = TRUE){
     
-    if(!file.exists(fileName)) {
-      cat('Error:The file with text ',fileName,' is not found!')
+    if(!file.exists(fileName_in)) {
+      cat('Error:The file with text ',fileName_in,' is not found!')
       return('')
     }
     
-    # if (file.info(fileName)$size>length_of_train_text_limit){
-    #   length_of_train_text <- length_of_train_text_limit
-    #   print(paste0("The length of text in file 'train.txt' (",file.info(fileName)$size," characters) exceeds the set limit. The text has been cut to ",length_of_train_text_limit," characters."))
-    # } else length_of_train_text<- file.info(fileName)$size
+    file_size = file.info(fileName_in)$size
+    in.file = file(fileName_in, "r")
     
-    train <- read_csv(fileName,col_names = FALSE,col_types=cols(X1="c"))
-    # train <- readChar(fileName, length_of_train_text)
-    # if(Encoding(train)!="UTF-8")  Encoding(train)<-"UTF-8"
     
-    #pre-process the data-remove punctuation
-    cat("removing the punctuation...")
-    # train=gsub("[[:punct:]]", " ", train)
-    train=removePunctuation(train)
-    
-    # conver to lower case
-    if(fl_to_lower){
-      cat("converting to lower case...")
-      # train=stri_trans_tolower(train)
-      train=tolower(train)
+    i<-1
+    #clear output file
+    close( file( fileName_out, open="w" ) )
+    curr_chunk <- readChar(in.file,length_of_text_chunk)
+    length_of_curr_chunk <- nchar(curr_chunk)    
+    while( length_of_curr_chunk >0  ) {
+
+      print(paste("Preprocessing ", i," part..."))    
+
+
+      if(length_of_curr_chunk>0){
+      
+        #includes whole last word to the current chunk
+        length_end_of_word = 1
+        while (length_end_of_word>0 & grepl("\\w",substring(curr_chunk,length_of_curr_chunk,length_of_curr_chunk))) {
+
+          end_of_word <- readChar(in.file,1)
+          length_end_of_word <- ifelse(length(end_of_word)==0,0,nchar(end_of_word))
+          curr_chunk <- paste0(curr_chunk,end_of_word)
+          length_of_curr_chunk = length_of_curr_chunk+1
+          
+        }
+        
+        curr_chunk=removePunctuation(curr_chunk)
+        if(fl_to_lower)
+          curr_chunk=tolower(curr_chunk)
+        if (fl_remove_numbers)   
+          curr_chunk = removeNumbers(curr_chunk)
+        # if(Encoding(curr_chunk)!="UTF-8")  Encoding(curr_chunk)<-"UTF-8"      
+        out.file = file(fileName_out, "at")
+        writeChar(curr_chunk,out.file,nchar(curr_chunk))
+        close( out.file )
+        i=i+1
+        curr_chunk <- readChar(in.file,length_of_text_chunk)
+        length_of_curr_chunk <- ifelse(length(curr_chunk)==0,0,nchar(curr_chunk))      
+      }
     }
-    
-    if (fl_remove_numbers) {
-      cat("removing the numbers...")
-      #train = gsub("[[:digit:]]", "", train)
-      train = removeNumbers(train)
-    }
-    
-    return(train)
-    
+    print("Preprocessing completed.")     
+    close( in.file )    
+
   }
   
   #############################################################################################################
@@ -1444,18 +1473,21 @@ server <- function(input, output, session) {
     
     #pre-process the data
     progress$set(message = "Pre-process the data", value = 1)
-    fileName <- paste0(app_dir,"train.txt")
+    fileName_source <- paste0(app_dir,"train.txt")
+    if(!file.exists(fileName_source) | file.info(fileName_source)$size==0){
+      showModal(modalDialog(title = "Error message",  paste0("The file for pre-processing ",fileName_source," was not found."),easyClose = TRUE))
+      return()
+    }    
     
-    train<-TextPreprocess(fileName = fileName)
     
-    if(length(train)==0){
-      showModal(modalDialog(title = "Error message",  paste0("The file for pre-processing ",fileName," was not found."),easyClose = TRUE))
+    fileName_clean <- paste0(app_dir,"train1.txt")
+    
+    TextPreprocess(fileName_in = fileName_source, fileName_out = fileName_clean)
+    
+    if(!file.exists(fileName_clean) | file.info(fileName_clean)$size==0){
+      showModal(modalDialog(title = "Error message",  paste0("The file for model training ",fileName_clean," was not found."),easyClose = TRUE))
       return()
     }
-    
-    #write txt for model creation
-    progress$set(detail = "write text for model creation", value = 2)
-    write(train,paste0(app_dir,"train.txt"))
     
     start_time <- Sys.time()
     progress$set(detail = "training model...", value = 3)
@@ -1562,11 +1594,11 @@ server <- function(input, output, session) {
                            classes = 0 # if >0 make k-means clustering
   )
   {
-    # if(Sys.info()['sysname']=='Windows') {
-    #   win_word2vec(input_filename, output_filename,binary,cbow, num_threads, num_features, window, min_count, sample, classes)
-    # } else {
+    if(Sys.info()['sysname']=='Windows') {
+      win_word2vec(input_filename, output_filename,binary,cbow, num_threads, num_features, window, min_count, sample, classes)
+    } else {
       wordVectors::train_word2vec(train_file = input_filename,output_file = output_filename,cbow = 0, threads = num_threads,window = window,vectors = num_features,min_count = min_count,classes = classes, force = TRUE)
-    # }
+    }
   }
   #############################################################################################################
   # Function fun_word2phrase - for Windows call C-function from dll/word2phrase.dll. 
@@ -1576,27 +1608,27 @@ server <- function(input, output, session) {
                               min_count = 20, # minimum word count
                               threshold=100) # The <float> value represents threshold for forming the phrases (higher means less phrases); default 100                        )
   {
-    # if(Sys.info()['sysname']=='Windows') {
-    #   win_word2phrase(input_filename, output_filename,min_count,threshold)
-    # } else {
+    if(Sys.info()['sysname']=='Windows') {
+      win_word2phrase(input_filename, output_filename,min_count,threshold)
+    } else {
       wordVectors::word2phrase(train_file = input_filename,output_file = output_filename,min_count = min_count, threshold = threshold, force = TRUE)
-    # }
+    }
   }
   #############################################################################################################
   # Function buildModel_word2vec - build word2vec word embedding model
   #############################################################################################################  
   buildModel_word2vec <- function(model_dir,n_grams =2, const_layer_size = 100, window = 10, min_count = 10){
     
-    # if(Sys.info()['sysname']=='Windows') {
-    #   dyn.load("dll/word2vec.dll")
-    #   dyn.load("dll/word2phrase.dll")
-    # }      
+    if(Sys.info()['sysname']=='Windows') {
+      dyn.load("dll/word2vec.dll")
+      dyn.load("dll/word2phrase.dll")
+    }
     
     #create bigram model- the file path here needs to be without spaces- otheriwise it doesn't work!!!
     if(n_grams>1){
       cat("creating bigram model...")
       #create bigram trained word2vec here
-      fun_word2phrase(paste0(model_dir,"train.txt"),paste0(model_dir,"train2.txt"),min_count)
+      fun_word2phrase(paste0(model_dir,"train1.txt"),paste0(model_dir,"train2.txt"),min_count)
       
       if(n_grams==2){
         fun_word2vec(paste0(model_dir,"train2.txt"), paste0(model_dir,"train.bin"), num_features = const_layer_size, window = window,  min_count = min_count)
@@ -1610,13 +1642,13 @@ server <- function(input, output, session) {
       }
     } else {
       cat("creating unigram model...")
-      fun_word2vec(paste0(model_dir,"train.txt"), paste0(model_dir,"train.bin"),num_features = const_layer_size, window = window, min_count = min_count)
+      fun_word2vec(paste0(model_dir,"train1.txt"), paste0(model_dir,"train.bin"),num_features = const_layer_size, window = window, min_count = min_count)
     }
     
-    # if(Sys.info()['sysname']=='Windows') {
-    #   dyn.unload("dll/word2vec.dll")
-    #   dyn.unload("dll/word2phrase.dll")
-    # }
+    if(Sys.info()['sysname']=='Windows') {
+      dyn.unload("dll/word2vec.dll")
+      dyn.unload("dll/word2phrase.dll")
+    }
   }
   
   #############################################################################################################
@@ -1675,32 +1707,35 @@ server <- function(input, output, session) {
     } else {
       progress <- shiny::Progress$new(min=1, max=3)
       on.exit(progress$close())
-      progress$set(message = 'Reading a file with simclins',value = 2)
+      progress$set(message = 'Reading a file with simclins',value = 1)
+      
       df_new_simclins <-  read.csv(newSimclinsFile$datapath,header = TRUE, stringsAsFactors=FALSE)
-      simclins_column_index <- getColumnToUpload(df_new_simclins,'simclins',c('factor','character'))
-      if(simclins_column_index==0){
-        showModal(modalDialog(title = "Error Message",  "The column 'simclins' or any character/factor column not found in the specified the file. Please, upload the file with column 'simclins'.",easyClose = TRUE))
-      } else {
-        if(nrow(df_new_simclins)>0){
-          
-          colnames(df_new_simclins)[simclins_column_index]<-'Simclins'
-          
-          category_str = getSelectedCategory(input$simclins_tree_settings)
-          if (category_str!=""){
-            progress$set(message = paste0('Loading ',as.character(nrow(df_new_simclins),' simclins from the file...')),value = 3)
-            fl_new_simclins <- unlist(lapply(df_new_simclins$Simclins,addNewSimclin,fl_show_msg_about_duplicates = FALSE,category = category_str))
-            if(any(fl_new_simclins))
-              logAction(userId = currentUserId, operation = "Load user simclins from csv file",parameters = newSimclinsFile$name, valueAfter=paste(df_new_simclins[fl_new_simclins,'Simclins'],collapse = ","))
-            showModal(modalDialog(title = "Information",  paste0("The ",as.character(sum(as.numeric(fl_new_simclins)))," simclins from ",as.character(length(fl_new_simclins))," were loaded from the file!"),easyClose = TRUE))
-          }  else {
-            showModal(modalDialog(title = "Error Message",  "Please select the category for the new simclins!",easyClose = TRUE))
-          }
-          
-        } else {
-          showModal(modalDialog(title = "Error Message",  "There are no any simclin in the specified file!",easyClose = TRUE))
-        }
+      #simclins_column_index <- getColumnToUpload(df_new_simclins,'simclins',c('factor','character'))
+      
+      if(nrow(df_new_simclins)==0){
+        showModal(modalDialog(title = "Error Message",  "There are no any simclin in the specified file!",easyClose = TRUE))
+        return()
       }
-    }
+      
+      fl_new_simclins <- c()
+      for (i in 1:ncol(df_new_simclins)) {
+        
+        category_str <- addNewCategoryToTree(colnames(df_new_simclins)[i],FALSE,TRUE)
+
+        if (category_str!=""){
+          progress$set(message = paste0('Loading simclins to category ',category_str,' from the file...'),value = 3)
+          fl_new_uploaded_simclins <- lapply(df_new_simclins[,i],addNewSimclin,fl_show_msg_about_duplicates = FALSE,category = category_str)
+          fl_new_simclins <- c(fl_new_uploaded_simclins,fl_new_simclins)
+        }  
+      }
+      
+      if(any(fl_new_simclins)){
+        logAction(userId = currentUserId, operation = "Load user simclins from csv file",parameters = newSimclinsFile$name, valueAfter = paste0(as.character(sum(as.numeric(fl_new_simclins)))," simclins were loaded from the file."))
+        refreshTable('simclins')
+      }  
+      
+      showModal(modalDialog(title = "Information",  paste0("The ",as.character(sum(as.numeric(fl_new_simclins)))," simclins were loaded from the file!"),easyClose = TRUE))
+      }
   })
   #############################################################################################################
   # Function dataModal - display modal window with specified htmlContent content
@@ -2018,12 +2053,12 @@ server <- function(input, output, session) {
                  
                }
   )
+
   
   #############################################################################################################
-  # Handler event of click button 'Save selected similar terms as simclins' (tab 2. Simclins explorer, table Similar terms)
-  # Save selected similar terms as simclins
+  # Function saveAsSimclins  - save selected similar terms as simclins
   #############################################################################################################  
-  observeEvent(input$saveAsSimclins_click, {
+  saveAsSimclins<-function() {
     if(!is.null(input$similar_terms_table_rows_selected)){
       df_selected_similar_terms <<- df_similar_terms[input$similar_terms_table_rows_selected,]
       df_selected_similar_terms$By_simclins <- NULL
@@ -2064,55 +2099,85 @@ server <- function(input, output, session) {
     } else {
       showModal(modalDialog(title = "Error message",  "There are no any selected similar terms!",easyClose = TRUE))
     }
+  }
+  
+    
+  #############################################################################################################
+  # Handler event of click button 'Save selected similar terms as simclins' (tab 2. Simclins explorer, table Similar terms)
+  # Save selected similar terms as simclins
+  #############################################################################################################  
+  observeEvent(input$saveAsSimclins_click, {
+    saveAsSimclins()
   })
+  #############################################################################################################
+  # Function clearSimilarTerms - move unselected similar terms to list of irrelevant terms
+  ############################################################################################################# 
+  clearSimilarTerms<-function() {
+  
+  category_str = getSelectedCategory(input$simclins_tree_settings)
+  if (category_str!=""){
+    
+    # save unselected similar_terms into the list of irrelevant terms
+    if(!is.null(input$similar_terms_table_rows_selected)){
+      df_unselected_similar_terms <<- df_similar_terms[-input$similar_terms_table_rows_selected,]
+      df_unselected_similar_terms <<- df_unselected_similar_terms[df_unselected_similar_terms$Category==category_str,]
+    }
+    else
+      df_unselected_similar_terms <<- df_similar_terms[df_similar_terms$Category==category_str,]
+    
+    df_unselected_similar_terms$By_simclins<<-NULL
+    df_unselected_similar_terms$Lexical_variant<<-NULL
+    df_unselected_similar_terms$Distance<<-NULL
+    if (nrow(df_unselected_similar_terms)>0)
+      df_unselected_similar_terms$Frequency<<-NA
+    else df_unselected_similar_terms$Frequency<<-integer(0)
+    
+    deleted_similar_terms_str = paste0(as.character(nrow(df_unselected_similar_terms))," similar terms deleted: ",paste(df_unselected_similar_terms[['Similar_term']],collapse=" ")," from the category ",category_str,".")
+    logAction (userId = currentUserId, operation = "Delete similar terms", valueAfter = deleted_similar_terms_str)
+    
+    df_irrelevant_terms <<- rbind(df_irrelevant_terms, df_unselected_similar_terms)
+    df_irrelevant_terms<<-df_irrelevant_terms[!duplicated(df_irrelevant_terms[,c("Similar_term","Category")]),]
+    
+    write.csv(df_irrelevant_terms, file = paste0(app_dir,"irrelevant_terms.csv"))
+    output$irrelevant_similar_terms_table = DT::renderDataTable({DT::datatable(df_irrelevant_terms,rownames=FALSE, escape = FALSE)})
+    
+    # clear unselected similar_terms
+    if(!is.null(input$similar_terms_table_rows_selected)){
+      df_similar_terms <<- df_similar_terms[!(rownames(df_similar_terms) %in% rownames(df_unselected_similar_terms)),]
+    }
+    else
+      df_similar_terms <<- df_similar_terms[df_similar_terms$Category!=category_str,]
+    
+    
+    refreshTable('irrelevant_terms')
+    refreshTable('similar_terms')
+  } else {
+    showModal(modalDialog(title = "Error Message",  "Please select the category for the clear the similar terms!",easyClose = TRUE))
+  }
+  
+  }
   #############################################################################################################
   # Handler event of click button '"Clear all unselected similar terms' (tab 2. Simclins explorer, table Similar terms)
   # Move unselected similar terms to list of irrelevant terms
   ############################################################################################################# 
   observeEvent(input$clearSimilar_terms_click, {
-    
-    category_str = getSelectedCategory(input$simclins_tree_settings)
-    if (category_str!=""){
-      
-      # save unselected similar_terms into the list of irrelevant terms
-      if(!is.null(input$similar_terms_table_rows_selected)){
-        df_unselected_similar_terms <<- df_similar_terms[-input$similar_terms_table_rows_selected,]
-        df_unselected_similar_terms <<- df_unselected_similar_terms[df_unselected_similar_terms$Category==category_str,]
-      }
-      else
-        df_unselected_similar_terms <<- df_similar_terms[df_similar_terms$Category==category_str,]
-      
-      df_unselected_similar_terms$By_simclins<<-NULL
-      df_unselected_similar_terms$Lexical_variant<<-NULL
-      df_unselected_similar_terms$Distance<<-NULL
-      if (nrow(df_unselected_similar_terms)>0)
-        df_unselected_similar_terms$Frequency<<-NA
-      else df_unselected_similar_terms$Frequency<<-integer(0)
-      
-      deleted_similar_terms_str = paste0(as.character(nrow(df_unselected_similar_terms))," similar terms deleted: ",paste(df_unselected_similar_terms[['Similar_term']],collapse=" ")," from the category ",category_str,".")
-      logAction (userId = currentUserId, operation = "Delete similar terms", valueAfter = deleted_similar_terms_str)
-      
-      df_irrelevant_terms <<- rbind(df_irrelevant_terms, df_unselected_similar_terms)
-      df_irrelevant_terms<<-df_irrelevant_terms[!duplicated(df_irrelevant_terms[,c("Similar_term","Category")]),]
-      
-      write.csv(df_irrelevant_terms, file = paste0(app_dir,"irrelevant_terms.csv"))
-      output$irrelevant_similar_terms_table = DT::renderDataTable({DT::datatable(df_irrelevant_terms,rownames=FALSE, escape = FALSE)})
-      
-      # clear unselected similar_terms
-      if(!is.null(input$similar_terms_table_rows_selected)){
-        df_similar_terms <<- df_similar_terms[!(rownames(df_similar_terms) %in% rownames(df_unselected_similar_terms)),]
-      }
-      else
-        df_similar_terms <<- df_similar_terms[df_similar_terms$Category!=category_str,]
-      
-      
-      refreshTable('irrelevant_terms')
-      refreshTable('similar_terms')
-    } else {
-      showModal(modalDialog(title = "Error Message",  "Please select the category for the clear the similar terms!",easyClose = TRUE))
-    }
-    
+    clearSimilarTerms()
   })
+
+  #############################################################################################################
+  # Handler event of click button '"Clear all unselected similar terms' (tab 2. Simclins explorer, table Similar terms)
+  # Move unselected similar terms to list of irrelevant terms
+  ############################################################################################################# 
+  observeEvent(input$nextSearch_click, {
+    fl_next_search_in_process <<- TRUE # trick till issue https://github.com/rstudio/DT/issues/615 will be fixed
+    saveAsSimclins()
+    clearSimilarTerms()
+    category_str = getSelectedCategory(input$simclins_tree_settings)
+    df_new_simclins=df_simclins[df_simclins$Processed==FALSE & df_simclins$Category==category_str,]    
+    findSimilarTerms(df_new_simclins,category_str)
+    fl_next_search_in_process <<- FALSE
+  })
+
   #############################################################################################################
   # Handler event of click button 'Select All' (tab 2. Simclins explorer, table Similar terms)
   # Select all terms in the table
@@ -3156,11 +3221,12 @@ server <- function(input, output, session) {
   #############################################################################################################
   # Function addNewCategoryToTree - Add new node to the list structure of tree, save it to the scv-file
   #############################################################################################################  
-  addNewCategoryToTree <- function (categoryName, fl_child){
+  addNewCategoryToTree <- function (categoryName, fl_child, fl_background_mode = FALSE){
     
+    result <- ""
     
-    # get title pf the new category
-    new_category_str = trimws(input$newCategory_input)
+    # get title of the new category
+    new_category_str = trimws(categoryName)
     
     
     if (!is.na(new_category_str) && new_category_str!=""){
@@ -3179,9 +3245,16 @@ server <- function(input, output, session) {
           
           simclins_tree_df<-jsonlite::fromJSON(simclins_tree_json)
           
-          if(nrow(simclins_tree_df)>0 && any(simclins_tree_df$text==new_category_str)) {
-            showModal(modalDialog(title = "Error message",  paste0("The category \"",new_category_str,"\" is in the tree already!"),easyClose = TRUE))
-            return(FALSE)
+          df_existed_category <- simclins_tree_df[tolower(simclins_tree_df$text)==tolower(new_category_str),]
+            
+          if(nrow(df_existed_category)>0) {
+            
+            if (!fl_background_mode)
+              showModal(modalDialog(title = "Error message",  paste0("The category \"",new_category_str,"\" is in the tree already!"),easyClose = TRUE))
+            else result <-df_existed_category$text
+            
+            return(result)
+            
           } else {
             
             # get the text of selected node
@@ -3205,46 +3278,60 @@ server <- function(input, output, session) {
             simclins_tree_df <- rbind(simclins_tree_df,new_category_row)
             
             #select the new node
-            simclins_tree_df$state['selected']$selected <- FALSE
-            selected_node_id <- simclins_tree_df[simclins_tree_df[,'text']==new_category_str,'id']
-            if(!identical(selected_node_id, character(0)))
-              simclins_tree_df[selected_node_id,'state']<-t(c(TRUE,TRUE))
+            if (!fl_background_mode){
+              simclins_tree_df$state['selected']$selected <- FALSE
+              selected_node_id <- simclins_tree_df[simclins_tree_df[,'text']==new_category_str,'id']
+              if(!identical(selected_node_id, character(0)))
+                simclins_tree_df[selected_node_id,'state']<-t(c(TRUE,TRUE))
+            }  
             
             #update the category tree in the settings section
             result_list<-treedf2list(simclins_tree_df)
             updateTree(session,"simclins_tree_settings",result_list)
-            
+
             #clean the input control
-            updateTextInput(session,"newCategory_input", value = NA)
+            if (!fl_background_mode){            
+              updateTextInput(session,"newCategory_input", value = NA)
+            }  
             
             # save updated tree as dataframe to csv-file
             saveCategoryTree_settings(result_list)
+            
+            
+            result <- new_category_str
           }
         } else {
-          showModal(modalDialog(title = "Error message",  "Please, select the category of the tree!",easyClose = TRUE))
+          if (!fl_background_mode)
+            showModal(modalDialog(title = "Error message",  "Please, select the category of the tree!",easyClose = TRUE))
         }
       } else {
-        showModal(modalDialog(title = "Error message",  "The category name must be at least 3 characters!",easyClose = TRUE)) # JavaScript component limit
+        if (!fl_background_mode) 
+          showModal(modalDialog(title = "Error message",  "The category name must be at least 3 characters!",easyClose = TRUE)) # JavaScript component limit
       }
       
     } else {
-      showModal(modalDialog(title = "Error message",  "Please, specify the category name!",easyClose = TRUE))
+      if (!fl_background_mode)  
+        showModal(modalDialog(title = "Error message",  "Please, specify the category name!",easyClose = TRUE))
     }
     
+    return(result)
+    
   }
+  
+  
   #############################################################################################################
   # Handler event of button click "Add the category" (tab Change category)
   # Add new category as sibling of active category
   ############################################################################################################# 
   observeEvent(input$addSiblinsCategory_click, {
-    addNewCategoryToTree(newNode,FALSE)
+    addNewCategoryToTree(input$newCategory_input,FALSE)
   })
   #############################################################################################################
   # Handler event of button click "Add the subcategory" (tab Change category)
   # Add new category as child of active category
   ############################################################################################################# 
   observeEvent(input$addSubCategory_click, {
-    addNewCategoryToTree(newNode,TRUE)
+    addNewCategoryToTree(input$newCategory_input,TRUE)
   })
   #############################################################################################################
   # Handler event of button click "Delete selected category" (tab Change category)
