@@ -1,5 +1,5 @@
-# NimbleMiner: a software that allows clinicians to interact with word embedding models (skip-gram models - word2vec by package rword2vec) to rapidly create lexicons of similar terms.
-# version: 0.48 (Model building, Search of similar terms, Negations (with exceptions), Irrelevant terms, Machine learning by SVM and LSTM)
+# NimbleMiner: a software that allows clinicians to interact with word embedding models (skip-gram models - word2vec by package rword2vec; GloVe) to rapidly create lexicons of similar terms.
+# version: 0.51 (Models building, Search of similar terms, Negations (with exceptions), Irrelevant terms, Machine learning by SVM and LSTM)
 #####################################
 
 library(shiny)
@@ -17,6 +17,8 @@ library(tm)
 library(xtable)
 library(keras)
 library(rword2vec)
+library(text2vec)
+library(tokenizers)
 
 # User interface
 ui <- fluidPage(
@@ -36,6 +38,7 @@ ui <- fluidPage(
                           hr(),
                           shinyTree("simclins_tree_settings",  theme="proton"),
                           tags$hr(),
+                          actionButton("renameCategory_click", "Rename selected category", icon = icon("edit")),
                           actionButton("deleteCategory_click", "Delete selected category", icon = icon("trash")),
                           actionButton("deleteCategoryWithSimclins_click", "Delete selected category with simclins", icon = icon("trash"))
                         )
@@ -61,7 +64,8 @@ ui <- fluidPage(
                                     label = "How many similar terms should be presented for every simclin?",
                                     value = 50, min = 5, max = 200),
                         tags$hr(),                        
-                        actionButton("buildModel_click", "Build the model", icon = icon("play")),
+                        actionButton("buildModel_word2vec_click", "Build word2vec model", icon = icon("play")),
+                        actionButton("buildModel_GloVe_click", "Build GloVe model", icon = icon("play")),
                         tags$hr(),
                         #actionButton("ExportVocabulary_click", "Export vocabulary", icon = icon("save")),
                         icon = icon("cogs")
@@ -184,7 +188,7 @@ ui <- fluidPage(
                                               textInput(inputId = 'newException_input', label = 'Enter new exception:'),
                                               actionButton("addNewException_click", "Add exception", icon = icon("plus")),
                                               hr(),
-                                              tabsetPanel( id = "negationCategory",
+                                              tabsetPanel( id = "exceptionCategory",
                                                            tabPanel('General',
                                                                     hr(),
                                                                     DT::dataTableOutput(outputId = 'exceptions_table'),
@@ -207,7 +211,10 @@ ui <- fluidPage(
                         wellPanel(
                           h1('Data labeling'),
                           fileInput(inputId = 'fileEHR_input','Please, upload .csv file with column "Note":',accept = c("text/csv","text/comma-separated-values,text/plain",".csv"), multiple = FALSE),
-                          selectInput("language", label = h4("Select language of notes"), choices = list("English" = 1, "Hebrew" = 2), selected = 1, width = "200px"),
+                          fluidRow(
+                            column(4,selectInput("language", label = h4("Select language of notes"), choices = list("English" = 1, "Hebrew" = 2), selected = 1, width = "200px")),
+                            column(4,selectInput("unit_type_to_label", label = h4("Select unit type"), choices = list("Document" = 1, "Paragraph" = 2, "Sentence" = 3), selected = 1, width = "200px"))
+                          ),
                           actionButton("makeLabels_click","Assign labels",icon = icon("tags")),
                           hr(),
                           navbarPage("Labeled data",
@@ -827,7 +834,7 @@ server <- function(input, output, session) {
   # Function addNewSimclin - adds the new record to the simclin's list
   #############################################################################################################
   addNewSimclin <- function(new_simclin_str,df_new_simclins,category = NULL,fl_show_msg_about_duplicates = TRUE, fl_from_file = FALSE ){
-
+    
     original_simclin_str = new_simclin_str
     # trim the new simclin
     new_simclin_str = enc2utf8(new_simclin_str)
@@ -836,14 +843,14 @@ server <- function(input, output, session) {
     new_simclin_str = gsub("[[:space:]]", "_", trimws(new_simclin_str))
     new_simclin_str=stri_trans_tolower(new_simclin_str)    
     
-        
+    
     if(nrow(df_simclins)>0 && any(df_simclins[df_simclins[,'Category']==category,]$Simclins==new_simclin_str)) {
       if (fl_show_msg_about_duplicates)
         showModal(modalDialog(title = "Error message",  paste0("The simclin \"",new_simclin_str,"\" is in the list already!"),easyClose = TRUE))
       print(paste0("Duplicated simclin: ",original_simclin_str," to existing simclin ", new_simclin_str," with same category ",category))
       return(FALSE)
     } else {
-
+      
       
       if(new_simclin_str=="") {
         if (fl_show_msg_about_duplicates)
@@ -951,14 +958,22 @@ server <- function(input, output, session) {
     
     is_lexical_variant_indx <- match(is_lexical_variant_rownames,rownames(df_similar_terms))
     
-    output$similar_terms_table = DT::renderDataTable({DT::datatable(df_similar_terms,selection = list(target = 'row', selected=is_lexical_variant_indx),
+    # is_from_several_models_rownames <- rownames(df_similar_terms_of_cat[grepl(',',df_similar_terms_of_cat$Model),])
+    # is_from_several_models_indx <- match(is_from_several_models_rownames,rownames(df_similar_terms))
+    
+    selected_rows <- c(is_lexical_variant_indx)
+    
+    selected_rows <- unique(selected_rows)
+    selected_rows <-sort(selected_rows)
+    
+    output$similar_terms_table = DT::renderDataTable({DT::datatable(df_similar_terms,selection = list(target = 'row', selected=selected_rows),
                                                                     filter = list(position = 'top', clear = FALSE),
                                                                     options = list(order=list(list(4,'asc')),pageLength = 100,columnDefs = list(list(targets = c(2,3,4,5), searchable = FALSE))
                                                                                    ,searchCols = list(NULL, list(search = selectedCategory_str),NULL,NULL,NULL,NULL)
                                                                                    
                                                                     )
                                                                     ,callback=DT::JS('table.on("page.dt",function() {var topPos = document.getElementById("div_similar_terms").offsetTop; window.scroll(0,topPos);})')
-                                                                    ,colnames = c("Similar terms","Category","Distance","By simclins",'Lexical variant of',"Examples"),rownames=FALSE, escape = FALSE)})
+                                                                    ,colnames = c("Similar terms","Category","Distance","By simclins",'Lexical variant of',"Model","Examples"),rownames=FALSE, escape = FALSE)})
     write.csv(df_similar_terms, file = paste0(app_dir,"similar_terms.csv"))
   })
   
@@ -987,7 +1002,6 @@ server <- function(input, output, session) {
         if(nrow(df_similar_terms_of_cat)>0){
           is_lexical_variant_rownames <- rownames(df_similar_terms_of_cat[!is.na(df_similar_terms_of_cat$Lexical_variant),])
           df_similar_terms[is_lexical_variant_rownames,'Lexical_variant']<<-df_similar_terms_of_cat[is_lexical_variant_rownames,'Lexical_variant']
-          
           is_lexical_variant_indx <- match(is_lexical_variant_rownames,rownames(df_similar_terms))
         }
       }
@@ -1011,13 +1025,13 @@ server <- function(input, output, session) {
         }
         df_similar_terms$Category <- factor(df_similar_terms$Category)
         output$similar_terms_table = DT::renderDataTable(df_similar_terms,selection = list(target = 'row', selected=selected_rows),
-                                                                        filter = list(position = 'top', clear = FALSE),
-                                                                        options = list(order=list(list(4,'asc'),list(2,'desc')),pageLength = 100,columnDefs = list(list(targets = c(2,3,4,5), searchable = FALSE))
-                                                                                       ,searchCols = list(NULL, list(search = paste0('["',selectedCategory_str,'"]')),NULL,NULL,NULL,NULL)
-                                                                                       
-                                                                        )
-                                                                        ,callback=DT::JS('table.on("page.dt",function() {var topPos = document.getElementById("div_similar_terms").offsetTop; window.scroll(0,topPos);})')
-                                                                        ,colnames = c("Similar terms","Category","Distance","By simclins",'Lexical variant of',"Examples"),rownames=FALSE, escape = FALSE)
+                                                         filter = list(position = 'top', clear = FALSE),
+                                                         options = list(order=list(list(4,'asc'),list(2,'desc')),pageLength = 100,columnDefs = list(list(targets = c(2,3,4,5), searchable = FALSE))
+                                                                        ,searchCols = list(NULL, list(search = paste0('["',selectedCategory_str,'"]')),NULL,NULL,NULL,NULL)
+                                                                        
+                                                         )
+                                                         ,callback=DT::JS('table.on("page.dt",function() {var topPos = document.getElementById("div_similar_terms").offsetTop; window.scroll(0,topPos);})')
+                                                         ,colnames = c("Similar terms","Category","Distance","By simclins",'Lexical variant of',"Model","Examples"),rownames=FALSE, escape = FALSE)
         write.csv(df_similar_terms, file = paste0(app_dir,"similar_terms.csv"))
       } else {
         df_similar_terms$Category <- factor(df_similar_terms$Category)
@@ -1028,7 +1042,7 @@ server <- function(input, output, session) {
                                                                         
                                                          )
                                                          ,callback=DT::JS('table.on("page.dt",function() {var topPos = document.getElementById("div_similar_terms").offsetTop; window.scroll(0,topPos);})')
-                                                         ,colnames = c("Similar terms","Category","Distance","By simclins",'Lexical_variant',"Examples"),rownames=FALSE, escape = FALSE)
+                                                         ,colnames = c("Similar terms","Category","Distance","By simclins",'Lexical variant of',"Model","Examples"),rownames=FALSE, escape = FALSE)
         
         write.csv(df_similar_terms, file = paste0(app_dir,"similar_terms.csv"))
       }
@@ -1082,8 +1096,6 @@ server <- function(input, output, session) {
                                                                     ),colnames = c("Similar terms","Category","Frequency","Examples"),rownames=FALSE, escape = FALSE)
       }
       
-      print("From refresh_table:")
-      print(nrow(df_irrelevant_terms))
       write.csv(df_irrelevant_terms, file = paste0(app_dir,"irrelevant_terms.csv"), fileEncoding = "UTF-8")
     } else if (tableName=='negations'){
       output$negations_table <- DT::renderDataTable(df_negations,
@@ -1107,8 +1119,9 @@ server <- function(input, output, session) {
       output$curr_category_exceptions_table  <- DT::renderDataTable(df_exceptions,
                                                                     filter = list(position = 'top', clear = FALSE),
                                                                     options = list(order=list(2,'desc'),pageLength = 10,columnDefs = list(list(targets = c(0,2,3), searchable = FALSE))
-                                                                                   ,searchCols = list(NULL,userSettings$selectedCategory,NULL,NULL)),
+                                                                                   ,searchCols = list(NULL,list(search = userSettings$selectedCategory),NULL,NULL)),
                                                                     colnames = c('Exception','Category','Frequency (%)','Examples'),rownames=FALSE, escape = FALSE)
+  
       
       write.csv(df_exceptions, file = paste0(app_dir,"negations-exceptions.csv"), fileEncoding = "UTF-8")
     }
@@ -1216,263 +1229,12 @@ server <- function(input, output, session) {
     flatList
   }
   #############################################################################################################
-  # Handler event of click button 'Delete selected category with simclins' (tab 'Change category')
-  #############################################################################################################
-  observeEvent(input$deleteCategoryWithSimclins_click, {
-    deleteCategory(get_selected(input$simclins_tree_settings,format = "classid"), fl_delete_simclins = TRUE, fl_delete_subcategories = TRUE)
-  })
-  #############################################################################################################
-  # Function deleteCategory  - Delete selected category with simclins (tab 'Change category')
-  #############################################################################################################
-  deleteCategory <- function(category_name,fl_delete_simclins = FALSE, fl_delete_subcategories = FALSE)
-  {
-    # get current selected node of the tree
-    selected_node_text  <- category_name
-    
-    if (length(selected_node_text)==0) {
-      showModal(modalDialog(title = "Error message",  "Please, select the category of the tree!",easyClose = TRUE))
-    } else {
-      
-      #read the current tree as dataframe
-      filename <- paste0(app_dir,"simclins_tree.csv")
-      simclins_tree_json <-  readLines(filename,encoding="UTF-8")
-      simclins_tree_df<-jsonlite::fromJSON(simclins_tree_json)
-      if (nrow(simclins_tree_df)==1){
-        showModal(modalDialog(title = "Error message",  "This is the last category in the tree and we cant delete it. Please, add the other category before removing this category!",easyClose = TRUE))
-      } else {
-        # get the text of node to delete(category name is unique in the tree)
-        
-        selected_node_id <- simclins_tree_df[simclins_tree_df[,'text']==selected_node_text,'id']
-        selected_node_subcategories <- simclins_tree_df[simclins_tree_df[,'parent']==selected_node_id,]
-        
-        if(nrow(selected_node_subcategories)>0) {
-          if(fl_delete_subcategories)
-            while (nrow(selected_node_subcategories)>0){
-              deleteCategory(selected_node_subcategories[1,'text'], fl_delete_simclins, fl_delete_subcategories)
-              simclins_tree_json <-  readLines(filename,encoding="UTF-8")
-              simclins_tree_df<-jsonlite::fromJSON(simclins_tree_json)
-              selected_node_subcategories <- simclins_tree_df[simclins_tree_df[,'parent']==selected_node_id,]
-            }
-          else {
-            showModal(modalDialog(title = "Error message",  paste0("The category \"",selected_node_text,"\" has subcategories. Please, delete its subcategories before."),easyClose = TRUE))
-            return(FALSE)
-          }
-        }
-        
-        selected_node_parent_id <- simclins_tree_df[simclins_tree_df[,'text']==selected_node_text,'parent']
-        
-        simclins_in_deleted_category<-nrow(df_simclins[which(df_simclins$Category ==selected_node_text),])
-        fl_with_simclins <- (simclins_in_deleted_category>0)
-        
-        if(fl_with_simclins & !fl_delete_simclins){
-          showModal(modalDialog(title = "Error message",  paste0("The category \"",selected_node_text,"\" has simclins Please, delete its simclins before."),easyClose = TRUE))
-          return(FALSE)
-        } else {
-          
-          simclins_tree_df <- simclins_tree_df[simclins_tree_df[,'text']!=selected_node_text,]
-          logAction (userId = currentUserId, operation = "Delete simclins of deleted category", valueAfter = as.character(selected_node_text))
-          
-          #select the parent node
-          simclins_tree_df$state['selected']$selected <- FALSE
-          
-          if(identical(selected_node_parent_id, character(0)) | selected_node_parent_id=='#'){
-            simclins_tree_df[min(simclins_tree_df[,'id']),'state']<-t(c(TRUE,TRUE))
-          } else {
-            simclins_tree_df[selected_node_parent_id,'state']<-t(c(TRUE,TRUE))
-          }
-          
-          #update the category tree in the settings section
-          result_list<-treedf2list(simclins_tree_df)
-          updateTree(session,"simclins_tree_settings",result_list)
-          
-          # save updated tree as dataframe to csv-file
-          saveCategoryTree_settings(result_list)
-          updateTree(session,"simclins_tree_settings",result_list)
-          
-          
-          if (fl_with_simclins){
-            df_selected_rows = data.table (Similar_term=df_simclins[which(df_simclins$Category ==selected_node_text),"Simclins"])
-            deleted_simclins_str = paste0(as.character(nrow(df_selected_rows))," simclins deleted: ",paste(df_selected_rows[['Similar_term']],collapse=" ")," from the category ",selected_node_text,".")
-            logAction (userId = currentUserId, operation = "Delete simclins with category", valueAfter = deleted_simclins_str)
-            rm(df_selected_rows)
-            df_simclins <<- df_simclins[df_simclins$Category!=selected_node_text,]
-            
-            refreshTable('simclins')
-            showModal(modalDialog(title = "Information",  paste0("The category ",selected_node_text," and ",simclins_in_deleted_category," its simclins were deleted!"),easyClose = TRUE))
-            
-          }
-        }
-        
-        
-      }
-    }
-  }
-  #############################################################################################################
-  # Function saveSelectedCategory  - Save selected category to the file
-  #############################################################################################################
-  saveSelectedCategory <- function(selected_node_text) {
-    
-    #read the current tree as dataframe
-    filename <- paste0(app_dir,"simclins_tree.csv")
-    simclins_tree_json <-  readLines(filename,encoding="UTF-8")
-    simclins_tree_df<-jsonlite::fromJSON(simclins_tree_json)
-    
-    selected_node_id <- simclins_tree_df[simclins_tree_df[,'text']==selected_node_text,'id']
-    
-    #select the parent node
-    simclins_tree_df$state['selected']$selected <- FALSE
-    
-    if(identical(selected_node_id, character(0))){
-      simclins_tree_df[min(simclins_tree_df[,'id']),'state']<-t(c(TRUE,TRUE))
-    } else {
-      simclins_tree_df[selected_node_id,'state']<-t(c(TRUE,TRUE))
-    }
-    
-    #update the category tree in the settings section
-    result_list<-treedf2list(simclins_tree_df)
-    
-    # save updated tree as dataframe to csv-file
-    saveCategoryTree_settings(result_list)
-    
-  }
-  
-  #############################################################################################################
-  # Handler event of selecting category in the tree
-  # Update filters in simclins and similar_terms tables by selected category in the tree
-  #############################################################################################################
-  
-  observe({
-    
-    #get current selected category
-    newSelectedCategory <- getNewSelectedCategory(input$simclins_tree_settings)
-    if (newSelectedCategory!="")   userSettings$selectedCategory <-newSelectedCategory
-    
-    saveSelectedCategory(userSettings$selectedCategory)
-    
-    # update tables - without saving the selection
-    df_simclins$Category <- factor(df_simclins$Category)
-    output$simclins_table = DT::renderDataTable(df_simclins,
-                                                filter = list(position = 'top', clear = FALSE),
-                                                options = list(order=list(0, 'asc'),pageLength = 10,columnDefs = list(list(targets = c(2,3), searchable = FALSE))
-                                                               ,searchCols = list(NULL, list(search =  paste0('["',userSettings$selectedCategory,'"]')),NULL,NULL)
-                                                               # ,searchCols = list(NULL, list(regex = TRUE, caseInsensitive = FALSE, search =  '^swall$',smart = FALSE),NULL,NULL)
-                                                ),colnames = c("Simclins","Category","Processed","Examples"),rownames=FALSE, escape = FALSE)
-    df_similar_terms$Category <- factor(df_similar_terms$Category)
-    output$similar_terms_table = DT::renderDataTable(df_similar_terms,
-                                                     filter = list(position = 'top', clear = FALSE), 
-                                                     options = list(order=list(2,'desc') ,pageLength = 100,stateSave = TRUE,columnDefs = list(list(targets = c(2,3,4,5), searchable = FALSE))
-                                                              ,searchCols = list(NULL, list(search =  paste0('["',userSettings$selectedCategory,'"]')),NULL,NULL,NULL)
-                                                                                                                                       
-    )#,colnames = c("Similar terms","Category","Distance","By simclins","Examples")
-    ,callback=DT::JS('table.on("page.dt",function() {var topPos = document.getElementById("div_similar_terms").offsetTop; window.scroll(0,topPos);})')
-    ,rownames=FALSE, escape = FALSE)
-    
-    html( html = paste0("Category: ", userSettings$selectedCategory), add = FALSE, selector = "span.navbar-brand:first")
-    df_irrelevant_terms$Category <- factor(df_irrelevant_terms$Category)
-    output$irrelevant_similar_terms_table = DT::renderDataTable(df_irrelevant_terms,
-                                                                filter = list(position = 'top', clear = FALSE),
-                                                                options = list(order=list(0, 'asc'),pageLength = 10,columnDefs = list(list(targets = c(2,3), searchable = FALSE))
-                                                                               ,searchCols = list(NULL, list(search = paste0('["',userSettings$selectedCategory,'"]')),NULL,NULL)
-                                                                ),colnames = c("Similar_terms","Category","Frequency","Examples"),rownames=FALSE, escape = FALSE)
-    
-    output$curr_category_negations_table = DT::renderDataTable(df_negations,
-                                                               filter = list(position = 'top', clear = FALSE),
-                                                               options = list(order=list(3, 'desc'),pageLength = 10,columnDefs = list(list(targets = c(0,1,3,4), searchable = FALSE))
-                                                                              ,searchCols = list(NULL, NULL,list(search = userSettings$selectedCategory),NULL,NULL)
-                                                               ),
-                                                               colnames = c("Negations","Type","Category","Frequency (%)","Examples"),rownames=FALSE, escape = FALSE)
-    
-    output$curr_category_exceptions_table  <- DT::renderDataTable(df_exceptions,
-                                                                  filter = list(position = 'top', clear = FALSE),
-                                                                  options = list(order=list(2,'desc'),pageLength = 10,columnDefs = list(list(targets = c(0,2,3), searchable = FALSE))
-                                                                                 ,searchCols = list(NULL,userSettings$selectedCategory,NULL,NULL)),
-                                                                  colnames = c('Exception','Category','Frequency (%)','Examples'),rownames=FALSE, escape = FALSE)
-    
-  })
-  
-  
-  #############################################################################################################
   # 1. Build the model
   #############################################################################################################
   #############################################################################################################
   # Function buildModels - call functions for training all models
   #############################################################################################################
-  buildModels <- function(app_dir,n_grams = 2, layers = 100 , window, min_count = 20){
-    # building word2vec word embedding model 
-    buildModel_word2vec(app_dir,n_grams, layers, window, min_count)
-    
-    # building Glove word embedding model (Assignment #1)
-    # buildModel_Glove()
-    
-    # building elmo word embedding model  (Assignment #1)
-    # buildModel_Elmo()
-    
-    # building word similarity  embedding model (Assignment #2)
-    # buildModel_WS()
-    
-    return()
-  }
-  #############################################################################################################
-  # Function TextPreprocess - preprocessing text before training word embedding model
-  #############################################################################################################  
-  TextPreprocess <- function(fileName_in = 'train.txt',fileName_out = 'train1.txt', length_of_text_chunk=5e7, fl_remove_numbers = TRUE, fl_to_lower = TRUE){
-    
-    if(!file.exists(fileName_in)) {
-      cat('Error:The file with text ',fileName_in,' is not found!')
-      return('')
-    }
-    
-    file_size = file.info(fileName_in)$size
-    in.file = file(fileName_in, "r")
-    
-    
-    i<-1
-    #clear output file
-    close( file( fileName_out, open="w" ) )
-    curr_chunk <- readChar(in.file,length_of_text_chunk)
-    length_of_curr_chunk <- nchar(curr_chunk)    
-    while( length_of_curr_chunk >0  ) {
-
-      print(paste("Preprocessing ", i," part..."))    
-
-
-      if(length_of_curr_chunk>0){
-      
-        #includes whole last word to the current chunk
-        length_end_of_word = 1
-        while (length_end_of_word>0 & grepl("\\w",substring(curr_chunk,length_of_curr_chunk,length_of_curr_chunk))) {
-
-          end_of_word <- readChar(in.file,1)
-          length_end_of_word <- ifelse(length(end_of_word)==0,0,nchar(end_of_word))
-          curr_chunk <- paste0(curr_chunk,end_of_word)
-          length_of_curr_chunk = length_of_curr_chunk+1
-          
-        }
-        
-        curr_chunk=removePunctuation(curr_chunk)
-        if(fl_to_lower)
-          curr_chunk=tolower(curr_chunk)
-        if (fl_remove_numbers)   
-          curr_chunk = removeNumbers(curr_chunk)
-        # if(Encoding(curr_chunk)!="UTF-8")  Encoding(curr_chunk)<-"UTF-8"      
-        out.file = file(fileName_out, "at")
-        writeChar(curr_chunk,out.file,nchar(curr_chunk))
-        close( out.file )
-        i=i+1
-        curr_chunk <- readChar(in.file,length_of_text_chunk)
-        length_of_curr_chunk <- ifelse(length(curr_chunk)==0,0,nchar(curr_chunk))      
-      }
-    }
-    print("Preprocessing completed.")     
-    close( in.file )    
-
-  }
-  
-  #############################################################################################################
-  # Handler event of button click 'Build the model' (tab 1. Model builder)
-  # Build the word2vec model
-  #############################################################################################################  
-  observeEvent(input$buildModel_click, {
+  buildModels <- function(model_names = c('word2vec'), app_dir,n_grams = 2, layers = 100 , window, min_count = 20){
     
     # create a progress object
     progress <- shiny::Progress$new(min=1, max=4)
@@ -1499,16 +1261,97 @@ server <- function(input, output, session) {
     start_time <- Sys.time()
     progress$set(detail = "training model...", value = 3)
     
-    buildModels(app_dir,n_grams, const_layer_size , input$setting_window, input$setting_min_count)
+    if('word2vec' %in% model_names)
+      # building word2vec word embedding model 
+      buildModel_word2vec(app_dir,n_grams, layers, window, min_count)
+    
+    if('GloVe' %in% model_names)
+      # building Glove word embedding model (Assignment #1)
+      #buildModel_Glove(app_dir,layers, min_count)
+      buildModel_GloVe('train.txt',n_grams = n_grams, const_layer_size = layers,  window = window, min_count = min_count)
+    #if('Elmo' %in% model_names)
+    # building elmo word embedding model  (Assignment #1)
+    # buildModel_Elmo()
+    #if('WS' %in% model_names)
+    # building word similarity  embedding model (Assignment #2)
+    # buildModel_WS()
     
     progress$set(detail = "the model is ready!", value = 4)
     
     process_duration <- as.character(round((difftime(Sys.time(),start_time,units = "mins")),2))
-    logAction(actionDataTime = start_time, userId = currentUserId, operation = "Build the model",parameters = paste0("n-grams: ",n_grams,"; window: ",input$setting_window,"; min number: ",input$setting_min_count,"; layers number: ", const_layer_size,
+    logAction(actionDataTime = start_time, userId = currentUserId, operation = "Build the model",parameters = paste0("Model name:",paste(unlist(model_names),sep = ", ")," n-grams: ",n_grams,"; window: ",input$setting_window,"; min number: ",input$setting_min_count,"; layers number: ", const_layer_size,
                                                                                                                      "; source file: ", input$file_input['name'],"."), actionDuration = process_duration )
     
     showModal(modalDialog(title = "Model building",  paste0("The model was built within ",process_duration," minutes."),easyClose = TRUE))
+    
+    return()
+  }
+  #############################################################################################################
+  # Function TextPreprocess - preprocessing text before training word embedding model
+  #############################################################################################################  
+  TextPreprocess <- function(fileName_in = 'train.txt',fileName_out = 'train1.txt', length_of_text_chunk=5e7, fl_remove_numbers = TRUE, fl_to_lower = TRUE){
+    
+    if(!file.exists(fileName_in)) {
+      cat('Error:The file with text ',fileName_in,' is not found!')
+      return('')
+    }
+    
+    file_size = file.info(fileName_in)$size
+    in.file = file(fileName_in, "r")
+    
+    
+    i<-1
+    #clear output file
+    close( file( fileName_out, open="w" ) )
+    curr_chunk <- readChar(in.file,length_of_text_chunk)
+    length_of_curr_chunk <- nchar(curr_chunk)    
+    while( length_of_curr_chunk >0  ) {
+      
+      print(paste("Preprocessing ", i," part..."))    
+      
+      
+      if(length_of_curr_chunk>0){
+        
+        #includes whole last word to the current chunk
+        length_end_of_word = 1
+        while (length_end_of_word>0 & grepl("\\w",substring(curr_chunk,length_of_curr_chunk,length_of_curr_chunk))) {
+          
+          end_of_word <- readChar(in.file,1)
+          length_end_of_word <- ifelse(length(end_of_word)==0,0,nchar(end_of_word))
+          curr_chunk <- paste0(curr_chunk,end_of_word)
+          length_of_curr_chunk = length_of_curr_chunk+1
+          
+        }
+        
+        curr_chunk=removePunctuation(curr_chunk)
+        if(fl_to_lower)
+          curr_chunk=tolower(curr_chunk)
+        if (fl_remove_numbers)   
+          curr_chunk = removeNumbers(curr_chunk)
+        # if(Encoding(curr_chunk)!="UTF-8")  Encoding(curr_chunk)<-"UTF-8"      
+        out.file = file(fileName_out, "at")
+        writeChar(curr_chunk,out.file,nchar(curr_chunk))
+        close( out.file )
+        i=i+1
+        curr_chunk <- readChar(in.file,length_of_text_chunk)
+        length_of_curr_chunk <- ifelse(length(curr_chunk)==0,0,nchar(curr_chunk))      
+      }
+    }
+    print("Preprocessing completed.")     
+    close( in.file )    
+    
+  }
+  
+  #############################################################################################################
+  # Handler event of button click 'Build the model' (tab 1. Model builder)
+  # Build the word2vec model
+  #############################################################################################################  
+  observeEvent(input$buildModel_word2vec_click, {
+    
+    buildModels('word2vec',app_dir,n_grams, const_layer_size , input$setting_window, input$setting_min_count)
+    
   })
+
   #############################################################################################################
   # Function win_word2vec - call the C code of word2vec from dll/word2vec.dll (only for Windows)
   #############################################################################################################  
@@ -1657,7 +1500,73 @@ server <- function(input, output, session) {
       dyn.unload("dll/word2phrase.dll")
     }
   }
-  
+  #############################################################################################################
+  # Function buildModel_GloVe - build GloVe word embedding model
+  #############################################################################################################  
+  buildModel_GloVe <- function(model_filename,n_grams =2, const_layer_size = 100,  window = 10, min_count = 10){
+    
+    library(text2vec)
+    
+    if(!file.exists(paste0(app_dir,model_filename))) {
+      cat('Error:The file with text ',paste0(app_dir,model_filename),' is not found!')
+      return('')
+    }
+    
+    file_size = file.info(paste0(app_dir,model_filename))$size
+    in.file = file(model_filename, "r")
+    start_time <- Sys.time()
+    train_text <-    readChar(in.file,file_size)
+    print(paste0("readChar time:",as.character(round((difftime(Sys.time(),start_time,units = "secs")),2))))
+    
+    start_time <- Sys.time()
+    tokens = word_tokenizer(train_text)
+    print(paste0("word_tokenizer time:",as.character(round((difftime(Sys.time(),start_time,units = "secs")),2))))
+    
+    
+    start_time <- Sys.time()    
+    it = itoken(tokens)
+    print(paste0("itoken time:",as.character(round((difftime(Sys.time(),start_time,units = "secs")),2))))    
+    
+    stopword <- tm::stopwords("SMART")
+    start_time <- Sys.time()
+    v = create_vocabulary(it,stopwords=stopword, ngram = c(1, n_grams), sep_ngram = "_")
+    print(paste0("create_vocabulary time:",as.character(round((difftime(Sys.time(),start_time,units = "secs")),2))))
+    v =  prune_vocabulary(v, term_count_min = min_count)
+    
+    # create co-occurrence vectorizer
+    start_time <- Sys.time()
+    vectorizer = vocab_vectorizer(v)
+    print(paste0("create co-occurrence vectorizer time:",as.character(round((difftime(Sys.time(),start_time,units = "secs")),2))))
+    
+    start_time <- Sys.time()    
+    tcm = create_tcm(it, vectorizer, skip_grams_window = window, skip_grams_window_context  = "symmetric")
+    print(paste0("create tcm time:",as.character(round((difftime(Sys.time(),start_time,units = "secs")),2))))
+    
+
+    glove_model = GloVe$new(word_vectors_size  = const_layer_size, vocabulary = v, x_max = 10, learning_rate = .25)
+    
+    start_time <- Sys.time() 
+    word_vectors_main = glove_model$fit_transform(tcm, n_iter = 10)
+    print(paste0("fit GloVe model time:",as.character(round((difftime(Sys.time(),start_time,units = "secs")),2))))
+    
+    word_vectors_context = glove_model$components
+    word_vectors = word_vectors_main + t(word_vectors_context)
+    
+    start_time <- Sys.time()
+    saveRDS(word_vectors, paste0(app_dir,"train_Glove.rds" ))
+    print(paste0("saveRDS time:",as.character(round((difftime(Sys.time(),start_time,units = "secs")),2))))
+
+  }  
+  #############################################################################################################
+  # Handler event of button click 'Build GloVe model' (tab 1. Model builder)
+  # Build the GloVe model
+  #############################################################################################################  
+  observeEvent(input$buildModel_GloVe_click, {
+    
+    buildModels('GloVe',app_dir,n_grams, const_layer_size , input$setting_window, input$setting_min_count)
+    
+  })
+    
   #############################################################################################################
   # 2. Simclins explorer
   #############################################################################################################
@@ -1728,7 +1637,7 @@ server <- function(input, output, session) {
       for (i in 1:ncol(df_new_simclins)) {
         
         category_str <- addNewCategoryToTree(colnames(df_new_simclins)[i],FALSE,TRUE)
-
+        
         if (category_str!=""){
           progress$set(message = paste0('Loading simclins to category ',category_str,'...'),value = 3)
           fl_new_uploaded_simclins <- lapply(df_new_simclins[,i],addNewSimclin,fl_show_msg_about_duplicates = FALSE,category = category_str)
@@ -1747,7 +1656,7 @@ server <- function(input, output, session) {
       }  
       
       showModal(modalDialog(title = "Information",  paste0("The ",as.character(sum(as.numeric(fl_new_simclins)))," simclins were loaded from the file!"),easyClose = TRUE))
-      }
+    }
   })
   #############################################################################################################
   # Function dataModal - display modal window with specified htmlContent content
@@ -1835,7 +1744,7 @@ server <- function(input, output, session) {
   # Function addNewSimilarTerms - add new similar term (by function of search similar terms from model)
   # 
   #############################################################################################################
-  addNewSimilarTerms<- function(df_new_similar_terms,simclin_str){
+  addNewSimilarTerms<- function(df_new_similar_terms){
     
     # exclude empty rows
     df_new_similar_terms <-  df_new_similar_terms[!(is.na(df_new_similar_terms$word) | df_new_similar_terms$word==""), ]
@@ -1844,8 +1753,6 @@ server <- function(input, output, session) {
       # prepare new dataframe for rbind command (adding to list of similar terms)   - create the same structure as df_similar_terms
       # rename column with distance
       colnames(df_new_similar_terms)[2] <-"Distance"
-      # create column with simclin name
-      df_new_similar_terms$By_simclins <- simclin_str
       # create column with flag if this similar term is lexical variant of any simclin
       df_new_similar_terms$Lexical_variant <- NA
       
@@ -1855,9 +1762,9 @@ server <- function(input, output, session) {
       # factor_cols <- sapply(df_new_similar_terms, is.factor)
       # df_new_similar_terms[factor_cols] <- lapply(df_new_similar_terms[factor_cols], as.character)
       
-      if(!is.na(df_new_similar_terms[1,'Distance']) & df_new_similar_terms[1,'Distance']>0){
+      if(!is.na(df_new_similar_terms[1,'Distance'])){
         
-        df_new_similar_terms[,'Distance']=round(as.numeric(df_new_similar_terms[,'Distance']),2)
+        
         # create column with examples
         df_new_similar_terms$Examples <- ""
         # create column with lexical variant
@@ -1865,7 +1772,7 @@ server <- function(input, output, session) {
         # create column with categries
         df_new_similar_terms$Category <- getSelectedCategory(input$simclins_tree_settings)
         
-        df_new_similar_terms <- df_new_similar_terms[,c("Similar_term","Category","Distance","By_simclins","Lexical_variant","Examples")]
+        df_new_similar_terms <- df_new_similar_terms[,c("Similar_term","Category","Distance","By_simclins","Lexical_variant","Model","Examples")]
         #how many these similar terms were found before
         # print(paste0('0.1 - Before getDuplicatedTerms',Sys.time()))
         duplicated_similar_terms_indx <-getDuplicatedTerms(df_new_similar_terms)
@@ -1902,7 +1809,7 @@ server <- function(input, output, session) {
         df_similar_terms[i,'Examples'] <<- paste0("<button type='button' class='btn btn-secondary load' onclick='Shiny.onInputChange(\"lastClickSimilar_termId\",this.id);' id='next_examples_for_",df_similar_terms[i,'Similar_term'],"#0'><i class='icon-left'></i>Examples</button>")
       }
       #df_similar_terms$Category <<- getSelectedCategory(input$simclins_tree)
-      df_similar_terms <<- df_similar_terms[,c("Similar_term","Category","Distance","By_simclins","Lexical_variant","Examples")]
+      df_similar_terms <<- df_similar_terms[,c("Similar_term","Category","Distance","By_simclins","Lexical_variant","Model","Examples")]
       
       #exclude duplicates with simclins and are in the list of irrelevant terms
       duplicated_indx <- getDuplicatedTerms(df_similar_terms,TRUE,FALSE,TRUE)
@@ -1945,24 +1852,41 @@ server <- function(input, output, session) {
     progress <- shiny::Progress$new(min=1, max=nrow(df_simclins[df_simclins[,'Processed']==FALSE,]))
     on.exit(progress$close())
     
-    if (!file.exists(paste0(app_dir,"train.bin")))
-      showModal(modalDialog(title = "Error message",  "There is no model! Please, build the model before.",easyClose = TRUE))
+    const_multipl_similar_terms <- 10
+
+    if (length(models_files)==0){
+      showModal(modalDialog(title = "Error message",  "No any model is found! Please, build at least the base model before.",easyClose = TRUE))
+      return()
+    }
     
-    else {
+    # for each new simclin get closest words
+    
+    df_similar_terms_as_result <- data.frame()  
+    df_cashed_similar_terms <- data.frame()
+    
+    model_method <- input$select_model_method
+
+
+    if (nrow(df_new_simclins)>0) {
       
-      # for each new simclin get closest words
-      
-      if (nrow(df_new_simclins)>0) {
+      for(model_indx in 1:length(models_files)){
         
-        if(input$select_model_method==1 & is.null(model)){
-          progress$set(message = 'Reading a word2vec binary file')
-          model <<- read.vectors(paste0(app_dir,"train.bin"))
-          
-        }
-        else if(input$select_model_method==2)
-          model <<- NULL
-        
+        progress$set(message = paste0('Find Similar terms for model ',models_files[model_indx],'...'))
         progress$set(message = 'Find Similar terms for:')
+        
+        if(grepl("\\.rds$",models_files[[model_indx]])) 
+          model_type <- 'GloVe'
+        else if(grepl("\\.bin$",models_files[[model_indx]])) 
+          model_type <- 'word2vec'
+        
+        if(model_method==1 & is.null(models[[model_indx]])){
+          progress$set(message = paste0('Reading a word2vec binary file ',models_files[model_indx]), detail = "")
+          if( model_type == 'word2vec')
+            models[[model_indx]] <<- read.vectors(paste0(app_dir,models_files[model_indx]))
+          else if( model_type == 'GloVe')
+            models[[model_indx]] <<- readRDS(paste0(app_dir,models_files[model_indx]))
+        }
+
         for(i in 1:nrow(df_new_simclins)) {
           start_time <- Sys.time()
           
@@ -1970,66 +1894,143 @@ server <- function(input, output, session) {
           simclin_str <- as.character(row$Simclins)
           simclin_str <- gsub(" ","_",simclin_str)
           
-          progress$set(value = i, detail =simclin_str)
+          progress$set(value = i, detail =paste0('Find Similar terms for: ',simclin_str))
           
-          const_multipl_similar_terms <- 10
+          start_time_search = Sys.time()
           
-          # get num closest words from word2vec model
-          # load model into memory (package wordVectors)
-          if(input$select_model_method==1){
-            df_new_similar_terms = closest_to(model,simclin_str,input$setting_similar_terms_count*const_multipl_similar_terms+1,FALSE) #wordVectors +1 - because it return the simclin with distance 1 too
-          }
-          # dont load model into memory (package rword2vec)
-          else {
-            df_new_similar_terms = rword2vec::distance(file_name = "train.bin",search_word = simclin_str,num = input$setting_similar_terms_count*const_multipl_similar_terms)
-          }
-          
-          fl_first_view_of_search_results <<- TRUE
-          
-          factor_cols <- sapply(df_new_similar_terms, is.factor)
-          df_new_similar_terms[factor_cols] <- lapply(df_new_similar_terms[factor_cols], as.character)
-          
-          # Ignore empty words, unicode padding and unicode file header
-          df_new_similar_terms <- df_new_similar_terms[!is.na(df_new_similar_terms$word) & df_new_similar_terms$word!="" & df_new_similar_terms$word!="\376" & df_new_similar_terms$word!="\377",]
-          
-          df_similar_terms_as_result <- head(df_new_similar_terms,input$setting_similar_terms_count)
-          df_new_similar_terms <- tail(df_new_similar_terms,nrow(df_new_similar_terms)-input$setting_similar_terms_count)
-          
-          # check for close words by Levenshtein distance
-          closest_by_lv <- closestByLevenstein(simclin_str,df_new_similar_terms[,'word'], max = 2)
-          
-          df_similar_terms_closest_by_lv <- df_new_similar_terms[closest_by_lv,]
-          df_new_similar_terms <- df_new_similar_terms[!closest_by_lv,]
-          
-          df_similar_terms_as_result <-rbind(df_similar_terms_as_result,df_similar_terms_closest_by_lv)
-          
-          new_similar_terms_str <- addNewSimilarTerms(df_similar_terms_as_result,simclin_str)
-          
-          # mark this simclin as processed and update number of found similar_terms
-          df_simclins[df_simclins$Simclins==simclin_str &  df_simclins$Category==category_str,'Processed'] <<-TRUE
-          
-          rm(df_new_similar_terms)
-          rm(df_similar_terms_as_result)
-          
-          process_duration <- as.character(round((difftime(Sys.time(),start_time,units = "mins")),2))
-          
-          logAction(actionDataTime <- start_time,userId = currentUserId,operation = 'System search similar terms for simclin',parameters = paste0("Simclin: ",simclin_str," from category ",category_str),valueAfter = new_similar_terms_str,actionDuration = process_duration)
-        }
-        refreshTable('simclins')
-        rm(df_new_simclins)
+          # get num closest words from word2vec model          
+          if(model_type == 'word2vec') {
+              # load model into memory (package wordVectors)
+              if(model_method==1){
+                df_new_similar_terms = closest_to(models[[model_indx]],simclin_str,input$setting_similar_terms_count*const_multipl_similar_terms+1,FALSE) #wordVectors +1 - because it return the simclin with distance 1 too
+                #remove words with 0 distance 
+                df_new_similar_terms<-df_new_similar_terms[!is.nan(df_new_similar_terms[,2]),]
+                
+              }
+              # dont load model into memory (package rword2vec)
+              else {
+                df_new_similar_terms = rword2vec::distance(file_name = models_files[model_indx],search_word = simclin_str,num = input$setting_similar_terms_count*const_multipl_similar_terms)
+                #remove words with 0 distance 
+                df_new_similar_terms<-df_new_similar_terms[!is.nan(df_new_similar_terms[,2]) & df_new_similar_terms[,2]!=-1,]
+                
+              }
+            
+          } 
+          # get num closest words from GloVe model          
+          else if(model_type == 'GloVe') {
+            if(model_method==1){
+              if(simclin_str %in% rownames(models[[model_indx]]))
+                cos_sim = sim2(x = models[[model_indx]], y =  models[[model_indx]][simclin_str, , drop = FALSE], method = "cosine", norm = "l2")
+              else cos_sim = NULL   
+            }  
+            else {
+              word_vectors <- readRDS(paste0(app_dir,models_files[model_indx]))
+              if(simclin_str %in% rownames(word_vectors))
+                cos_sim = sim2(x = word_vectors, y =  word_vectors[simclin_str, , drop = FALSE], method = "cosine", norm = "l2")
+              else cos_sim = NULL   
+              rm(word_vectors)
+            }  
+            if (!is.null(cos_sim)){
+              df_new_similar_terms <- head(sort(cos_sim[,1], decreasing = TRUE), input$setting_similar_terms_count*const_multipl_similar_terms+1)    
+              df_new_similar_terms <- as.data.frame(df_new_similar_terms)
+              df_new_similar_terms$word <- rownames(df_new_similar_terms)
+              rownames(df_new_similar_terms) <- 1:nrow(df_new_similar_terms)
+              df_new_similar_terms$dist <- df_new_similar_terms[,1]
+              df_new_similar_terms[,1] <- NULL
+              df_new_similar_terms<-df_new_similar_terms[!is.nan(df_new_similar_terms[,2]) & df_new_similar_terms[,2]!=-1,]            
+            }  else df_new_similar_terms = data.frame()
+          }          
         
-        updateSimilarTerms()
+          print(paste0("Search in model ",models_files[model_indx],": ",as.character(round((difftime(Sys.time(),start_time_search,units = "secs")),2))))
+
+
+          #if there are new similar terms
+          if (nrow(df_new_similar_terms)>0){
+            
+              start_time_process = Sys.time()
+              df_new_similar_terms$Model <- models_files[model_indx]
+              df_new_similar_terms$By_simclins <- simclin_str
+              colnames(df_new_similar_terms)[2]<-"dist"
+              
+              
+              factor_cols <- sapply(df_new_similar_terms, is.factor)
+              df_new_similar_terms[factor_cols] <- lapply(df_new_similar_terms[factor_cols], as.character)
+              
+              # Ignore empty words, unicode padding and unicode file header
+              df_new_similar_terms <- df_new_similar_terms[!is.na(df_new_similar_terms$word) & df_new_similar_terms$word!="" & df_new_similar_terms$word!="\376" & df_new_similar_terms$word!="\377",]
+              
+              if(model_indx==1){
+                df_similar_terms_as_result <- rbind(df_similar_terms_as_result,head(df_new_similar_terms,input$setting_similar_terms_count))
+                df_cashed_similar_terms <- rbind(df_cashed_similar_terms,tail(df_new_similar_terms,nrow(df_new_similar_terms)-input$setting_similar_terms_count))
+              } else   df_cashed_similar_terms <- rbind(df_cashed_similar_terms,df_new_similar_terms)
+              
+              # check for close words by Levenshtein distance
+              closest_by_lv <- closestByLevenstein(simclin_str,df_cashed_similar_terms[,'word'], max = 2)
+              
+              if(length(closest_by_lv)>0){
+                df_similar_terms_closest_by_lv <- df_cashed_similar_terms[closest_by_lv,]
+                df_cashed_similar_terms <- df_cashed_similar_terms[!closest_by_lv,]         
+                df_similar_terms_as_result <-rbind(df_similar_terms_as_result,df_similar_terms_closest_by_lv)
+              }  
+              print(paste0("Processing of search results: ",as.character(round((difftime(Sys.time(),start_time_process,units = "secs")),2))))
+            } else {
+              print(paste0("There are no any similar terms for '",simclin_str,"' in model ",models_files[model_indx],"."))
+            }   
+            # mark this simclin as processed 
+            df_simclins[df_simclins$Simclins==simclin_str &  df_simclins$Category==category_str,'Processed'] <<-TRUE
+          
+          
+          
+        }#loop by simclins    
         
-        fl_first_view_of_search_results <<- FALSE
-        showModal(modalDialog(title = "Similar terms search","Similar terms` search has completed!",easyClose = TRUE))
-      } else {
-        showModal(modalDialog(
-          title = "Error message",
-          "There are no new simclins for search!",
-          easyClose = TRUE
-        ))
+        
+      }#loop by models        
+      
+      #find duplicated terms among models
+      
+      start_time_final_process = Sys.time()
+      
+      refreshTable('simclins')
+
+      if(nrow(df_similar_terms_as_result)>0){
+        df_similar_terms_as_result[,2]<-round(as.numeric(df_similar_terms_as_result[,2]),2)
       }
+      if (nrow(df_cashed_similar_terms)>0) {
+        df_cashed_similar_terms<-df_cashed_similar_terms[!duplicated(df_cashed_similar_terms[,c('word','Model')]),]
+        df_cashed_similar_terms[,2]<-round(as.numeric(df_cashed_similar_terms[,2]),2)
+        df_cashed_similar_terms<-aggregate(. ~ word,data = df_cashed_similar_terms,toString)
+        df_similar_terms_duplicated <- df_cashed_similar_terms[grepl(',',df_cashed_similar_terms$Model),]
+        if(nrow(df_similar_terms_duplicated)>0)
+          df_similar_terms_as_result <-rbind(df_similar_terms_as_result,df_similar_terms_duplicated)
+        print(paste0(nrow(df_similar_terms_duplicated),' repeats of same terms in several models were found.'))
+        rm(df_similar_terms_duplicated)
+      }  
+      
+      if(nrow(df_similar_terms_as_result)>0){
+        new_similar_terms_str <- addNewSimilarTerms(df_similar_terms_as_result)
+        fl_first_view_of_search_results <<- TRUE
+        updateSimilarTerms()      
+        fl_first_view_of_search_results <<- FALSE        
+      } else new_similar_terms_str = "" 
+      
+      print(paste0("Final processing of search results: ",as.character(round((difftime(Sys.time(),start_time_final_process,units = "secs")),2))))
+      process_duration <- as.character(round((difftime(Sys.time(),start_time,units = "mins")),2))
+      logAction(actionDataTime <- start_time,userId = currentUserId,operation = 'System search similar terms for simclins',parameters = paste0("Simclins: ", paste(as.character(df_new_simclins$Simclin), collapse=", ")," from category ",category_str),valueAfter = new_similar_terms_str,actionDuration = process_duration)          
+      
+      rm(df_new_similar_terms)
+      rm(df_similar_terms_as_result)
+      rm(df_cashed_similar_terms)
+      rm(df_new_simclins)      
+      
+      showModal(modalDialog(title = "Similar terms search","Similar terms` search has completed!",easyClose = TRUE))
+    } else {
+      showModal(modalDialog(
+        title = "Error message",
+        "There are no new simclins for search!",
+        easyClose = TRUE
+      ))
     }
+    
     
   }
   
@@ -2065,7 +2066,7 @@ server <- function(input, output, session) {
                  
                }
   )
-
+  
   
   #############################################################################################################
   # Function saveAsSimclins  - save selected similar terms as simclins
@@ -2075,6 +2076,7 @@ server <- function(input, output, session) {
       df_selected_similar_terms <<- df_similar_terms[input$similar_terms_table_rows_selected,]
       df_selected_similar_terms$By_simclins <- NULL
       df_selected_similar_terms$Lexical_variant <- NULL
+      df_selected_similar_terms$Model <- NULL
       df_selected_similar_terms$Processed <- FALSE
       colnames(df_selected_similar_terms)[1] <-"Simclins"
       df_selected_similar_terms$Distance <- NULL
@@ -2113,7 +2115,7 @@ server <- function(input, output, session) {
     }
   }
   
-    
+  
   #############################################################################################################
   # Handler event of click button 'Save selected similar terms as simclins' (tab 2. Simclins explorer, table Similar terms)
   # Save selected similar terms as simclins
@@ -2125,50 +2127,49 @@ server <- function(input, output, session) {
   # Function clearSimilarTerms - move unselected similar terms to list of irrelevant terms
   ############################################################################################################# 
   clearSimilarTerms<-function() {
-  
-  category_str = getSelectedCategory(input$simclins_tree_settings)
-  if (category_str!=""){
     
-    # save unselected similar_terms into the list of irrelevant terms
-    if(!is.null(input$similar_terms_table_rows_selected)){
-      df_unselected_similar_terms <<- df_similar_terms[-input$similar_terms_table_rows_selected,]
-      df_unselected_similar_terms <<- df_unselected_similar_terms[df_unselected_similar_terms$Category==category_str,]
+    category_str = getSelectedCategory(input$simclins_tree_settings)
+    if (category_str!=""){
+      
+      # save unselected similar_terms into the list of irrelevant terms
+      if(!is.null(input$similar_terms_table_rows_selected)){
+        df_unselected_similar_terms <<- df_similar_terms[-input$similar_terms_table_rows_selected,]
+        df_unselected_similar_terms <<- df_unselected_similar_terms[df_unselected_similar_terms$Category==category_str,]
+      }
+      else
+        df_unselected_similar_terms <<- df_similar_terms[df_similar_terms$Category==category_str,]
+      
+      df_unselected_similar_terms$By_simclins<<-NULL
+      df_unselected_similar_terms$Lexical_variant<<-NULL
+      df_unselected_similar_terms$Model<<-NULL
+      df_unselected_similar_terms$Distance<<-NULL
+      if (nrow(df_unselected_similar_terms)>0)
+        df_unselected_similar_terms$Frequency<<-NA
+      else df_unselected_similar_terms$Frequency<<-integer(0)
+      
+      deleted_similar_terms_str = paste0(as.character(nrow(df_unselected_similar_terms))," similar terms deleted: ",paste(df_unselected_similar_terms[['Similar_term']],collapse=" ")," from the category ",category_str,".")
+      logAction (userId = currentUserId, operation = "Delete similar terms", valueAfter = deleted_similar_terms_str)
+      
+      df_irrelevant_terms <<- rbind(df_irrelevant_terms, df_unselected_similar_terms)
+      df_irrelevant_terms<<-df_irrelevant_terms[!duplicated(df_irrelevant_terms[,c("Similar_term","Category")]),]
+      
+      write.csv(df_irrelevant_terms, file = paste0(app_dir,"irrelevant_terms.csv"))
+      output$irrelevant_similar_terms_table = DT::renderDataTable({DT::datatable(df_irrelevant_terms,rownames=FALSE, escape = FALSE)})
+      
+      # clear unselected similar_terms
+      if(!is.null(input$similar_terms_table_rows_selected)){
+        df_similar_terms <<- df_similar_terms[!(rownames(df_similar_terms) %in% rownames(df_unselected_similar_terms)),]
+      }
+      else
+        df_similar_terms <<- df_similar_terms[df_similar_terms$Category!=category_str,]
+      
+      
+      refreshTable('irrelevant_terms')
+      refreshTable('similar_terms')
+    } else {
+      showModal(modalDialog(title = "Error Message",  "Please select the category for the clear the similar terms!",easyClose = TRUE))
     }
-    else
-      df_unselected_similar_terms <<- df_similar_terms[df_similar_terms$Category==category_str,]
     
-    df_unselected_similar_terms$By_simclins<<-NULL
-    df_unselected_similar_terms$Lexical_variant<<-NULL
-    df_unselected_similar_terms$Distance<<-NULL
-    if (nrow(df_unselected_similar_terms)>0)
-      df_unselected_similar_terms$Frequency<<-NA
-    else df_unselected_similar_terms$Frequency<<-integer(0)
-    
-    deleted_similar_terms_str = paste0(as.character(nrow(df_unselected_similar_terms))," similar terms deleted: ",paste(df_unselected_similar_terms[['Similar_term']],collapse=" ")," from the category ",category_str,".")
-    logAction (userId = currentUserId, operation = "Delete similar terms", valueAfter = deleted_similar_terms_str)
-    
-    df_irrelevant_terms <<- rbind(df_irrelevant_terms, df_unselected_similar_terms)
-    df_irrelevant_terms<<-df_irrelevant_terms[!duplicated(df_irrelevant_terms[,c("Similar_term","Category")]),]
-    
-    print("From clearsimilarterms:")
-    print(nrow(df_irrelevant_terms))
-    write.csv(df_irrelevant_terms, file = paste0(app_dir,"irrelevant_terms.csv"))
-    output$irrelevant_similar_terms_table = DT::renderDataTable({DT::datatable(df_irrelevant_terms,rownames=FALSE, escape = FALSE)})
-    
-    # clear unselected similar_terms
-    if(!is.null(input$similar_terms_table_rows_selected)){
-      df_similar_terms <<- df_similar_terms[!(rownames(df_similar_terms) %in% rownames(df_unselected_similar_terms)),]
-    }
-    else
-      df_similar_terms <<- df_similar_terms[df_similar_terms$Category!=category_str,]
-    
-    
-    refreshTable('irrelevant_terms')
-    refreshTable('similar_terms')
-  } else {
-    showModal(modalDialog(title = "Error Message",  "Please select the category for the clear the similar terms!",easyClose = TRUE))
-  }
-  
   }
   #############################################################################################################
   # Handler event of click button '"Clear all unselected similar terms' (tab 2. Simclins explorer, table Similar terms)
@@ -2177,7 +2178,7 @@ server <- function(input, output, session) {
   observeEvent(input$clearSimilar_terms_click, {
     clearSimilarTerms()
   })
-
+  
   #############################################################################################################
   # Handler event of click button '"Clear all unselected similar terms' (tab 2. Simclins explorer, table Similar terms)
   # Move unselected similar terms to list of irrelevant terms
@@ -2191,7 +2192,7 @@ server <- function(input, output, session) {
     findSimilarTerms(df_new_simclins,category_str)
     fl_next_search_in_process <<- FALSE
   })
-
+  
   #############################################################################################################
   # Handler event of click button 'Select All' (tab 2. Simclins explorer, table Similar terms)
   # Select all terms in the table
@@ -2281,7 +2282,7 @@ server <- function(input, output, session) {
     pattern_list = c()
     pattern_str <- ""
     
-    df_simclins_for_search <- df_simclins[!duplicated(df_simclins$Simclins), ]
+    df_simclins_for_search <- df_simclins[!duplicated(df_simclins$Simclins) & (df_simclins$Category %in% categories_list), ]
     
     if(nrow(df_simclins_for_search)>0)
       for (i in 1:nrow(df_simclins_for_search)){
@@ -2310,15 +2311,30 @@ server <- function(input, output, session) {
     
     print("Reading text file...")
     
-    df_allNotes <- read.csv(filename,header = TRUE, stringsAsFactors=FALSE,comment.char = "", colClasses = "character",fileEncoding = "UTF-8")
-    
-    notes_column_index <- getColumnToUpload(df_allNotes,"Note",c("character","factor"))
+    df_corpus_to_label <- read.csv(filename,header = TRUE, stringsAsFactors=FALSE,comment.char = "", colClasses = "character",fileEncoding = "UTF-8")
+
+    notes_column_index <- getColumnToUpload(df_corpus_to_label,"Note",c("character","factor"))
     
     if(notes_column_index==0){
       return(list("error_msg" = "The column \'Note\' or any character/factor column not found in the specified the file. Please, upload the file with column \'Note\'."))
     }
     
-    colnames(df_allNotes)[notes_column_index]<-'Note'
+    colnames(df_corpus_to_label)[notes_column_index]<-'Note'
+
+    if(input$unit_type_to_label==2){
+      df_corpus_to_label<-subset(df_corpus_to_label, select=Note)
+      df_allNotes<-data.frame(Note = unlist(tokenize_paragraphs(df_corpus_to_label$Note)), stringsAsFactors = F)
+      info_to_user<-paste0(nrow(df_allNotes)," paragraphs from ",nrow(df_corpus_to_label)," notes")
+    } else if(input$unit_type_to_label==3){
+      df_corpus_to_label<-subset(df_corpus_to_label, select=Note)
+      df_allNotes<-data.frame(Note = unlist(tokenize_sentences(df_corpus_to_label$Note)), stringsAsFactors = F)
+      info_to_user<-paste0(nrow(df_allNotes)," sentences from ",nrow(df_corpus_to_label)," notes")
+    } else {
+      df_allNotes <- df_corpus_to_label
+      info_to_user<-paste0(nrow(df_allNotes)," notes")
+    }
+
+    rm(df_corpus_to_label)
     
     # pre-processing of data for labeling
     df_allNotes$Note <- tolower(df_allNotes$Note)
@@ -2331,12 +2347,19 @@ server <- function(input, output, session) {
     df_allNotes$Label <- FALSE
     if(length(pattern_list)>0 & nrow(df_allNotes)>0)
       for(i in 1:length(pattern_list)){
-        print(paste0("Labeling ",nrow(df_allNotes)," notes by ",i,"/",length(pattern_list)," part of simclins list"))
-        for (j in 1:nrow(df_allNotes)){
-          # if(grepl(pattern_list[i], df_allNotes[j,'Note'], ignore.case = TRUE, perl = TRUE))
-          if(grepl(pattern_list[i], df_allNotes[j,'Note'], ignore.case = TRUE))
-            df_allNotes[j,'Label'] <- TRUE
-        }
+        print(paste0("Filtering positive items from ",info_to_user," by ",i,"/",length(pattern_list)," part of simclins list from ",Sys.time()))
+        
+        # start_time <- Sys.time()
+        # for (j in 1:nrow(df_allNotes)){
+        #   if(grepl(pattern_list[i], df_allNotes[j,'Note'], ignore.case = TRUE))
+        #     df_allNotes[j,'Label'] <- TRUE
+        # }
+        # print('Loop:')
+        # print(round((difftime(Sys.time(),start_time,units = "min")),2))
+        start_time <- Sys.time()
+        df_allNotes$Label <- grepl(pattern_list[i], df_allNotes$Note, ignore.case = TRUE)
+        print(paste0('Duration: ', round((difftime(Sys.time(),start_time,units = "min")),2)))
+        
       }
     
     write.csv(df_allNotes, file = paste0(app_dir,"raw_labeled_data_utf8.csv"), fileEncoding = "UTF-8")
@@ -2344,7 +2367,7 @@ server <- function(input, output, session) {
     
     fileName_all_labeled_data <- paste0(app_dir,"labeled-data-",format(Sys.time(), "%Y-%m-%d_%H-%M"),".csv")
     write.csv(df_allNotes[df_allNotes[,'Label']==FALSE,], file = paste0(app_dir,"negative_labeled_data.csv"), fileEncoding = "UTF-8")
-    write.csv(df_allNotes[df_allNotes[,'Label']==FALSE,], file = fileName_all_labeled_data, fileEncoding = "UTF-8")
+    write.csv(df_allNotes[df_allNotes[,'Label']==FALSE,], file = fileName_all_labeled_data, na = "", fileEncoding = "UTF-8")
     
     orignal_source_colnames <- colnames(df_allNotes)
     
@@ -2424,7 +2447,7 @@ server <- function(input, output, session) {
       pattern_post_negations_list[['General']]<-pattern_post_negations
     }
     
-    # get patterns for all categories
+    # get patterns for specific negations for categories
     if(length(categories_list)>0)
       for(i in 1:length(categories_list)){
         pattern_post_negations <- ""
@@ -2462,6 +2485,10 @@ server <- function(input, output, session) {
           categories_cols_names <- paste0(categories_cols_names,",",category_column_simclins_name,",",category_column_simclins_count_name)
         }
       
+      
+      if (nrow(df_positiveLabels)>1)
+        pb <- txtProgressBar(1,nrow(df_positiveLabels), style = 3)
+      
       for(i in 1:nrow(df_positiveLabels)){
         
         curr_note = df_positiveLabels[i,"Note"]
@@ -2470,20 +2497,23 @@ server <- function(input, output, session) {
         
         noteOfLabel = FALSE
         
+        all_simclins_of_note <-c()
         curr_note_negations <- c()
         curr_note_irrelevant_terms <- c()
         
-        all_simclins_of_note <-c()
+        tags_simclins <- data.frame(matrix(ncol = 3, nrow = 0))
+        colnames(tags_simclins)<-c('word','start','end')
+        tags_negated_simclins <- data.frame(matrix(ncol = 3, nrow = 0))
+        colnames(tags_negated_simclins)<-c('word','start','end')
+        tags_irrelevant_simclins <- data.frame(matrix(ncol = 3, nrow = 0))
+        colnames(tags_negated_simclins)<-c('word','start','end')
         
         #check all simclins for negation
-        print (paste0(i,"/",nrow(df_positiveLabels)))
         #get simclins
         for(pattern_list_indx in 1:length(pattern_list)){
           
           list_simclins = stri_locate_all(curr_note, regex = pattern_list[pattern_list_indx], opts_regex=stri_opts_regex(case_insensitive=TRUE))
-          prev_pos_start = 1
           prev_pos_end = 0
-          note_offset <- 0  #offset will correct positions of the simclins in the note after adding the new tags to the text
           
           #search simclins in note
           for (j in 1:nrow(list_simclins[[1]])){
@@ -2496,15 +2526,10 @@ server <- function(input, output, session) {
               isSimclinIrrelevant = FALSE
               isSimclinNegated = FALSE
               
-              pos_start = pos_start+note_offset
-              pos_end = pos_end+note_offset
-              
               curr_simclin = substring(curr_note,pos_start,pos_end)
               
               curr_simclin_categories <- df_simclins_for_search[df_simclins_for_search$Simclin==stri_trans_tolower(curr_simclin),'Category']
-              
-              print(paste0(i,"/",nrow(df_positiveLabels)," simclin:",curr_simclin))
-              
+
               #simclin` relevance check
               
               #there are irrelevant expressions for current simclin
@@ -2545,8 +2570,8 @@ server <- function(input, output, session) {
                     pattern_pre_negations <- paste(pattern_pre_negations,pattern_pre_negations_list[[curr_simclin_categories[cat_indx]]],sep = "")
                   }
                 
-                substring_before_simclin =  substring(curr_note,prev_pos_end+1,pos_end)
-                substring_after_simclin =   stri_extract_first(substring(curr_note,pos_start),regex = paste0("(\\b(",curr_simclin,")(?!\\w))(?:\\W+\\w+){0,",as.character(input$distance_between_simclin_and_negation),"}"), opts_regex=stri_opts_regex(case_insensitive=TRUE))
+                substring_before_simclin =  substring(curr_note,1,pos_end)
+                substring_after_simclin =   substring(curr_note,pos_start)
                 
                 if(length(pattern_pre_negations)>0){
                   
@@ -2558,14 +2583,17 @@ server <- function(input, output, session) {
                   pattern_current_pre_negation <- paste0(pattern_pre_negations,"(?=(\\W*",stri_dup("(\\w*)\\W*",as.character(input$distance_between_simclin_and_negation)),"(\\b(",curr_simclin,")(?!\\w))))")
                   # if there are negations - check it for exceptions (pseudo and terminations later)
                   if(nrow(negations_of_curr_simclin[[1]])>0 & !is.na(negations_of_curr_simclin[[1]][1,'start']))
-                    for (i_negation in 1:nrow(negations_of_curr_simclin[[1]])){
+                    for (i_negation in nrow(negations_of_curr_simclin[[1]]):1){
                       isNegationPseudo = FALSE
                       
                       if(!isSimclinNegated){
                         pos_start_curr_negation = negations_of_curr_simclin[[1]][i_negation,'start']
                         pos_end_curr_negation = negations_of_curr_simclin[[1]][i_negation,'end']
                         
-                        if(!is.na(pos_start_curr_negation)){
+                        post_start_curr_negation_in_note = pos_start_curr_negation
+                        post_end_curr_negation_in_note = pos_end_curr_negation
+                        
+                        if(!is.na(pos_start_curr_negation) & pos_end_curr_negation>=pos_end){
                           
                           curr_simclin_with_negation = substring(substring_before_simclin,pos_start_curr_negation,pos_end_curr_negation)
                           
@@ -2573,7 +2601,7 @@ server <- function(input, output, session) {
                           curr_negation = stri_extract_first(curr_simclin_with_negation, regex = pattern_current_pre_negation, opts_regex=stri_opts_regex(case_insensitive=TRUE))
                           curr_negation <- gsub(x = curr_negation,pattern = " ",replacement = "_")
                           
-                          if (nrow(df_exceptions)>0) {
+                          if (nrow(df_exceptions)>0 & length(df_exceptions[df_exceptions$Category %in% curr_simclin_categories,'Exception'])>0) {
                             # for every negation - get list of its exceptions
                             exceptions_pattern_str <-df_exceptions[grepl(curr_negation,df_exceptions[df_exceptions$Category %in% curr_simclin_categories,'Exception'],ignore.case = TRUE),'Exception']
                             
@@ -2629,6 +2657,9 @@ server <- function(input, output, session) {
                           pos_start_curr_negation = negations_of_curr_simclin[[1]][i_negation,'start']
                           pos_end_curr_negation = negations_of_curr_simclin[[1]][i_negation,'end']
                           
+                          post_start_curr_negation_in_note = pos_start_curr_negation + pos_start - 1
+                          post_end_curr_negation_in_note = pos_end_curr_negation + pos_start - 1
+                          
                           if(!is.na(pos_start_curr_negation)) {
                             curr_simclin_with_negation = substring(substring_after_simclin,pos_start_curr_negation,pos_end_curr_negation)
                             
@@ -2670,13 +2701,13 @@ server <- function(input, output, session) {
               if (!isSimclinNegated & !isSimclinIrrelevant) {
                 noteOfLabel = TRUE
                 curr_simclin <- gsub(x = curr_simclin,pattern = " ",replacement = "_")
-                df_positiveLabels$Note[i]<- paste0(substring(df_positiveLabels$Note[i],1,pos_start-1),"<span class='true-simclin'>",curr_simclin,"</span>",substring(df_positiveLabels$Note[i],pos_end+1))
-                note_offset <- note_offset+nchar("<span class='true-simclin'></span>")
+                tags_simclins<-rbind(tags_simclins,data.frame("word" = curr_simclin, "start" = pos_start, "end" = pos_end+1)) 
                 if(!(curr_simclin %in% all_simclins_of_note)){
                   all_simclins_of_note <- c(all_simclins_of_note,curr_simclin)
                   if(length(curr_simclin_categories)>0) {
                     df_positiveLabels[i,paste0(curr_simclin_categories[1],' (simclins)')] <- paste(c(unlist(strsplit(df_positiveLabels[i,paste0(curr_simclin_categories[1],' (simclins)')],split = ", ")),curr_simclin),collapse = ", ")
                     df_positiveLabels[i,paste0(curr_simclin_categories[1],' (# of simclins)')] <- (as.integer(df_positiveLabels[i,paste0(curr_simclin_categories[1],' (# of simclins)')]))+1
+                    
                   }
                 }
                 
@@ -2684,31 +2715,87 @@ server <- function(input, output, session) {
                 if(isSimclinNegated){
                   curr_simclin_with_negation<-sub("\\(","\\\\(",curr_simclin_with_negation)
                   curr_simclin_with_negation<-sub("\\)","\\\\(",curr_simclin_with_negation)
-                  
-                  df_positiveLabels$Note[i]<-sub(curr_simclin_with_negation,paste0("<span class='false-simclin'>",gsub(x = curr_simclin_with_negation, pattern = " ", replacement = "_"),"</span>"),df_positiveLabels$Note[i],fixed=TRUE)
-                  note_offset <- note_offset+nchar("<span class='false-simclin'></span>")
                   curr_note_negations <- append(curr_note_negations,stri_trans_tolower(curr_negation))
+                  tags_negated_simclins<-rbind(tags_negated_simclins,data.frame("word" = curr_simclin, "start" = post_start_curr_negation_in_note, "end" = post_end_curr_negation_in_note+1)) 
                 }
                 else if(isSimclinIrrelevant){
-                  df_positiveLabels$Note[i]<-sub(curr_irrelevant_expression,paste0("<span class='false-simclin'>",gsub(" ","_",curr_irrelevant_expression),"</span>"),df_positiveLabels$Note[i],fixed=TRUE)
-                  note_offset <- note_offset+nchar("<span class='false-simclin'></span>")
+                  curr_note_irrelevant_terms<-sub("\\(","\\\\(",curr_note_irrelevant_terms)
+                  curr_note_irrelevant_terms<-sub("\\)","\\\\(",curr_note_irrelevant_terms)                  
                   curr_note_irrelevant_terms <- append(curr_note_irrelevant_terms,stri_trans_tolower(gsub(" ","_",trimws(curr_irrelevant_expression))))
+                  tags_irrelevant_simclins<-rbind(tags_irrelevant_simclins,data.frame("word" = curr_simclin, "start" = start_pos_expression_in_note, "end" = end_pos_expression_in_note+1)) 
                 }
               }
-              curr_note <- df_positiveLabels$Note[i]
+
             } #if(!is.na(pos_start)&!is.na(pos_end))
-            
+            prev_pos_end = pos_end
           }#loop over simclins
           
         }#loop over pattern list
         
         
-        #if simclin is not negated - the patient's note is labeled as TRUE
-        if (noteOfLabel == TRUE) {
+        #check simclins if they are part of other negated and irrelevant expressions (by coordinates) or other simclins
+        if(nrow(tags_simclins)>0) {
+        for(tags_indx_simclins in 1:nrow(tags_simclins)){
+          if(nrow(tags_negated_simclins)>0) 
+          for(tags_indx_negated_simclins in 1:nrow(tags_negated_simclins))
+            if (as.numeric(tags_simclins[tags_indx_simclins,'start'])>=as.numeric(tags_negated_simclins[tags_indx_negated_simclins,'start'])
+                & as.numeric(tags_simclins[tags_indx_simclins,'end'])<=as.numeric(tags_negated_simclins[tags_indx_negated_simclins,'end'])){
+              tags_simclins[tags_indx_simclins,'start']<- 0
+              tags_simclins[tags_indx_simclins,'end']<- 0
+            }
+          if(nrow(tags_irrelevant_simclins)>0) 
+          for(tags_indx_irrelevant_simclins in 1:nrow(tags_irrelevant_simclins))
+            if (as.numeric(tags_simclins[tags_indx_simclins,'start'])>=as.numeric(tags_irrelevant_simclins[tags_indx_irrelevant_simclins,'start'])
+                & as.numeric(tags_simclins[tags_indx_simclins,'end'])<=as.numeric(tags_irrelevant_simclins[tags_indx_irrelevant_simclins,'end'])){
+              tags_simclins[tags_indx_simclins,'start']<- 0
+              tags_simclins[tags_indx_simclins,'end']<- 0
+            }  
+          #remove simclins which re part of other simclins
+          for(tags_indx_simclins2 in 1:nrow(tags_simclins))
+            if (rownames(tags_simclins)[tags_indx_simclins]!=rownames(tags_simclins)[tags_indx_simclins2] & as.numeric(tags_simclins[tags_indx_simclins,'start'])>=as.numeric(tags_simclins[tags_indx_simclins2,'start'])
+                & as.numeric(tags_simclins[tags_indx_simclins,'end'])<=as.numeric(tags_simclins[tags_indx_simclins2,'end'])){
+              tags_simclins[tags_indx_simclins,'start']<- 0
+              tags_simclins[tags_indx_simclins,'end']<- 0
+            } 
+        }
+        tags_simclins <- tags_simclins[tags_simclins$start>0 & tags_simclins$end>0,]
+        all_simclins_of_note <- paste(sort(unlist(lapply(unique(tags_simclins$word),as.character))),collapse = ', ')     
+      }
+        curr_note_negations <- paste(sort(unique(curr_note_negations)),collapse = ', ')   
+        curr_note_irrelevant_terms <- paste(sort(unique(curr_note_irrelevant_terms)),collapse = ', ')   
+
+        #join all tags with their positions
+        tags_all <- data.frame(matrix(ncol = 2, nrow = 0))
+        colnames(tags_all) <- c("pos","tag")
+        
+        if(nrow(tags_simclins)>0){
+          tags_all <- rbind(tags_all,data.frame("pos" = as.numeric(tags_simclins$start),"tag" = "<span class='true-simclin'>"))
+          tags_all <- rbind(tags_all,data.frame("pos" = as.numeric(tags_simclins$end),"tag" = "</span>"))        
+        }
+        if(nrow(tags_negated_simclins)>0){
+          tags_all <- rbind(tags_all,data.frame("pos" = as.numeric(tags_negated_simclins$start),"tag" = "<span class='false-simclin'>"))
+          tags_all <- rbind(tags_all,data.frame("pos" = as.numeric(tags_negated_simclins$end),"tag" = "</span>"))        
+        }
+        if(nrow(tags_irrelevant_simclins)){
+          tags_all <- rbind(tags_all,data.frame("pos" = as.numeric(tags_irrelevant_simclins$start),"tag" = "<span class='false-simclin'>"))
+          tags_all <- rbind(tags_all,data.frame("pos" = as.numeric(tags_irrelevant_simclins$end),"tag" = "</span>"))        
+        }  
+        
+        #sort tags by their positions in desc order 
+        tags_all <- tags_all[with(tags_all, order(pos,decreasing = TRUE)),]
+        
+        #insert tags
+        if(nrow(tags_all)>0)
+        for(tag_indx in (1:nrow(tags_all))){
+          curr_note <- paste0(substring(curr_note,1,tags_all$pos[tag_indx]-1),tags_all$tag[tag_indx],substring(curr_note,as.numeric(tags_all$pos[tag_indx])))
+        }
+
+        #if there is at least one not negated and not irrelevant simclin - the patient's note is labeled as TRUE
+        if (nrow(tags_simclins) >0 ) {
           
           df_irrelevant_positiveLabels = append(df_irrelevant_positiveLabels,NA)
           df_false_positiveLabels = append(df_false_positiveLabels,NA)
-          df_positiveLabels[i,'Simclins'] <- paste(unique(all_simclins_of_note), collapse = ", ")
+          df_positiveLabels[i,'Simclins'] <- all_simclins_of_note
           
         }
         else {
@@ -2716,15 +2803,17 @@ server <- function(input, output, session) {
             df_false_positiveLabels = append(df_false_positiveLabels,paste(curr_note_negations, collapse = ", "))
             df_irrelevant_positiveLabels = append(df_irrelevant_positiveLabels,NA)
             total_negated_notes<-total_negated_notes+1
-            print(total_negated_notes)
           } else if(isSimclinIrrelevant){
             df_false_positiveLabels = append(df_false_positiveLabels,NA)
             df_irrelevant_positiveLabels = append(df_irrelevant_positiveLabels,paste(curr_note_irrelevant_terms, collapse = ", "))
           }
           
         }
-      }
-    } # loop over notes
+        df_positiveLabels[i,"Note"]<-curr_note
+        if (nrow(df_positiveLabels)>1)
+          setTxtProgressBar(pb, i)
+      }# loop over notes
+    } 
     
     
     df_labeled_data <- read.csv(fileName_all_labeled_data,col.names = c(orignal_source_colnames),stringsAsFactors = FALSE,fileEncoding = "UTF-8")
@@ -2756,7 +2845,7 @@ server <- function(input, output, session) {
     df_labeled_data <- rbind(df_positiveLabels,df_labeled_data, fill = TRUE)
     df_labeled_data<-df_labeled_data[with(df_labeled_data, order(NimbleMiner_ID)), ]
     df_labeled_data$NimbleMiner_ID<-NULL
-    write.csv(df_labeled_data, file = fileName_all_labeled_data, fileEncoding = "UTF-8")
+    write.csv(df_labeled_data, file = fileName_all_labeled_data, fileEncoding = "UTF-8", na = "")
     
     total_positive_notes <-nrow(df_positiveLabels)
     total_irrelevant_notes <- nrow(df_irrelevantPosLabels)
@@ -2804,7 +2893,7 @@ server <- function(input, output, session) {
       total_irrelevant_notes <-labeling_results[['total_irrelevant_notes']]
       total_negated_notes <-labeling_results[['total_negated_notes']]
       total_negative_notes <-labeling_results[['total_negative_notes']]
-
+      
       # open file with positive labeled data
       df_positiveLabels <<-  read.csv(paste0(app_dir,"pos_labeled_data.csv"),header = TRUE,  stringsAsFactors=FALSE,comment.char = "",fileEncoding = "UTF-8")
       output$posLabeledData_table <- DT::renderDataTable(df_positiveLabels[,c("Note","Simclins")],rownames=FALSE, escape = FALSE,filter = 'top',options = list(pageLength = 100,columnDefs = list(list(targets = c(0), width = "70%"))))
@@ -2816,7 +2905,7 @@ server <- function(input, output, session) {
       # open file with irrelevant simclins
       df_irrelevantPosLabels <<-  read.csv(paste0(app_dir,"pos_irrelevant_labeled_data.csv"),header = TRUE, col.names = c('Note','Similar_term'), stringsAsFactors=FALSE,colClasses = c("character","character","character"),comment.char = "",fileEncoding = "UTF-8")
       output$posIrrelevantLabeledData_table <- DT::renderDataTable({DT::datatable(df_irrelevantPosLabels,colnames = c('Note','Similar term'),rownames=FALSE, escape = FALSE,filter = 'top',options = list(pageLength = 100))})
-
+      
       logAction(userId = currentUserId, operation = "Labeling",parameters = "totalNotes", valueAfter=total_notes, actionDuration = round((Sys.time() - startLabelingTime),2))
       logAction(userId = currentUserId, operation = "Labeling",parameters = "totalPositiveNotes", valueAfter=total_positive_notes)
       logAction(userId = currentUserId, operation = "Labeling",parameters = "totalIrrelevantPositiveNotes", valueAfter=total_irrelevant_notes)
@@ -2864,7 +2953,7 @@ server <- function(input, output, session) {
         refreshTable('irrelevant_terms')
       }  
       
-    
+      
       loadLabelingStatistics()
       updateStatisticsByLabeledData()
       
@@ -2980,7 +3069,7 @@ server <- function(input, output, session) {
   # Could be called by user enter or when simclins or similar terms deleted
   #############################################################################################################
   addNewIrrSimilarTerm <- function (irr_similar_term_str) {
-  
+    
     original_irr_similar_term_str = irr_similar_term_str
     # trim the new simclin
     irr_similar_term_str = enc2utf8(irr_similar_term_str)
@@ -2988,7 +3077,7 @@ server <- function(input, output, session) {
     irr_similar_term_str = removePunctuation(irr_similar_term_str,preserve_intra_word_contractions = FALSE,preserve_intra_word_dashes = FALSE,ucp = TRUE)
     irr_similar_term_str = gsub("[[:space:]]", "_", trimws(irr_similar_term_str))
     irr_similar_term_str=stri_trans_tolower(irr_similar_term_str)    
-
+    
     category_str <- getSelectedCategory(input$simclins_tree_settings)
     
     if(category_str!="") {
@@ -3187,7 +3276,7 @@ server <- function(input, output, session) {
   observeEvent(input$addNewException_click, {
     if (!is.na(input$newException_input) && input$newException_input!=""){
       
-      if(input$negationCategory=="General")
+      if(input$exceptionCategory=="General")
         exceptionCategory = "General"
       else exceptionCategory = getSelectedCategory()      
       
@@ -3241,25 +3330,33 @@ server <- function(input, output, session) {
   #############################################################################################################
   # Change category - edit categories tree and select current active category
   #############################################################################################################
+
+  checkCategoryName<-function(new_category_str) {
+    error_msg  = ""
+    if (is.na(new_category_str) | new_category_str==""){
+      error_msg  = "Please, specify the category name!"
+    } else if(nchar(new_category_str)<3){
+      error_msg  =  "The category name must be at least 3 characters!"
+    } 
+    return(error_msg)  
+  }
   #############################################################################################################
   # Function addNewCategoryToTree - Add new node to the list structure of tree, save it to the scv-file
+  # Returns name of the new added category or the existent category with this name
   #############################################################################################################  
   addNewCategoryToTree <- function (categoryName, fl_child, fl_background_mode = FALSE){
     
     result <- ""
     
-    # get title of the new category
     new_category_str = trimws(categoryName)
     
-    
-    if (!is.na(new_category_str) && new_category_str!=""){
-      
-      if(nchar(new_category_str)>2){
-        
+    error_msg<- checkCategoryName(categoryName)
+    # get title of the new category
+
+    if (error_msg==""){
         # get current selected node of the tree
         selected_node <- get_selected(input$simclins_tree_settings,format = "classid")
-        
-        
+
         if (length(selected_node)>0) {
           
           #read the current tree as dataframe
@@ -3269,7 +3366,7 @@ server <- function(input, output, session) {
           simclins_tree_df<-jsonlite::fromJSON(simclins_tree_json)
           
           df_existed_category <- simclins_tree_df[tolower(simclins_tree_df$text)==tolower(new_category_str),]
-            
+          
           if(nrow(df_existed_category)>0) {
             
             if (!fl_background_mode)
@@ -3314,7 +3411,7 @@ server <- function(input, output, session) {
             if (!fl_background_mode){  
               updateTree(session,"simclins_tree_settings",result_list)
             }  
-
+            
             #clean the input control
             if (!fl_background_mode){            
               updateTextInput(session,"newCategory_input", value = NA)
@@ -3330,20 +3427,67 @@ server <- function(input, output, session) {
           if (!fl_background_mode)
             showModal(modalDialog(title = "Error message",  "Please, select the category of the tree!",easyClose = TRUE))
         }
-      } else {
-        if (!fl_background_mode) 
-          showModal(modalDialog(title = "Error message",  "The category name must be at least 3 characters!",easyClose = TRUE)) # JavaScript component limit
-      }
+      
       
     } else {
       if (!fl_background_mode)  
-        showModal(modalDialog(title = "Error message",  "Please, specify the category name!",easyClose = TRUE))
+        showModal(modalDialog(title = "Error message",  error_msg ,easyClose = TRUE))
     }
     
     return(result)
     
   }
+  #############################################################################################################
+  # Function renameCategoryInTree  - Rename selected category in category tree (tab 'Change category')
+  # Returns new name of successfully renamed category 
+  #############################################################################################################
+  renameCategoryInTree <- function (prev_categoryName, new_categoryName){
+    
+    result <- ""
+    
+    new_category_str = trimws(new_categoryName)
+    
+    error_msg<- checkCategoryName(new_category_str)
+
+    if (error_msg==""){
   
+        #read the current tree as dataframe
+        filename <- paste0(app_dir,"simclins_tree.csv")
+        simclins_tree_json <- readLines(filename,encoding="UTF-8")
+        
+        simclins_tree_df<-jsonlite::fromJSON(simclins_tree_json)
+        
+        df_existed_category <- simclins_tree_df[tolower(simclins_tree_df$text)==tolower(new_category_str),]
+        
+        if(nrow(df_existed_category)>0) {
+          
+          showModal(modalDialog(title = "Error message",  paste0("The category \"",new_category_str,"\" is in the tree already!"),easyClose = TRUE))
+          return(result)
+          
+        } else {
+
+          
+          # rename node in the dataframe
+          simclins_tree_df[simclins_tree_df[,'text']==prev_categoryName,'text'] = new_category_str
+          
+          #update the category tree in the settings section
+          result_list<-treedf2list(simclins_tree_df)
+ 
+          updateTree(session,"simclins_tree_settings",result_list)
+
+          # save updated tree as dataframe to csv-file
+          saveCategoryTree_settings(result_list)
+          
+          result <- new_category_str
+        }
+
+    } else {
+        showModal(modalDialog(title = "Error message",  error_msg ,easyClose = TRUE))
+    }
+    
+    return(result)
+    
+  }
   
   #############################################################################################################
   # Handler event of button click "Add the category" (tab Change category)
@@ -3416,8 +3560,264 @@ server <- function(input, output, session) {
       }
     }
   })
+  #############################################################################################################
+  # Handler event of click button 'Delete selected category with simclins' (tab 'Change category').
+  # Call confirmation message box
+  #############################################################################################################
+  observeEvent(input$deleteCategoryWithSimclins_click, {
+    showModal(modalDialog(
+      tagList(
+        tags$p("Are you sure you want to delete this category with its simclins and subcategories?",class="ext-danger")
+      ), 
+      title="Delete selected category with simclins and subcategories",
+      footer = tagList(actionButton("confirm_deleteCategoryWithSimclins", "Yes, delete this category with its simclins and subcategories",class = "btn-danger"),
+                       modalButton("Cancel")
+      )
+    ))
+    
+  })
+  #############################################################################################################
+  # Handler event of click button 'Yes, delete this category with its simclins and subcategories' in confirmation message box (tab 'Change category').
+  # Call function to delete category
+  #############################################################################################################
+  observeEvent(input$confirm_deleteCategoryWithSimclins, {
+    deleteCategory(get_selected(input$simclins_tree_settings,format = "classid"), fl_delete_simclins = TRUE, fl_delete_subcategories = TRUE)
+    removeModal()
+  })  
   
+  #############################################################################################################
+  # Handler event of click button 'Rename selected category' (tab 'Change category').
+  # Call message box
+  #############################################################################################################
+  observeEvent(input$renameCategory_click, {
+    showModal(
+      modalDialog(
+        textInput("new_category_name", "Category name", value = get_selected(input$simclins_tree_settings,format = "classid")),
+        
+        if (global_error_message!="")
+          div(tags$b(global_error_message, style = "color: red;")),
+        
+        footer = tagList(
+          actionButton("rename_category", "Rename"),
+          modalButton("Cancel")
+        )
+      )
+    )  
+  })  
+
+  #############################################################################################################
+  # Handler event of click button 'Rename' in confirmation message box (tab 'Change category').
+  # Call function to rename category
+  #############################################################################################################
+  observeEvent(input$rename_category, {
+    # get current selected node of the tree
+    selected_node <- get_selected(input$simclins_tree_settings,format = "classid")
+    # get the text of selected node
+    prev_category_name <- selected_node[[1]][1] 
+    new_category_name <- input$new_category_name
+    
+    if(prev_category_name==trimws(new_category_name)){
+      showModal(modalDialog(title = "Error message",  paste0("The new name of category is same as before!"),easyClose = TRUE))
+      return()
+    }  
+    
+    new_category_name <- renameCategoryInTree(prev_category_name,new_category_name)
+    
+    if (new_category_name!=""){
+
+      if(nrow(df_simclins)>0) 
+        df_simclins[df_simclins$Category == prev_category_name,'Category'] <<- new_category_name
+      if(nrow(df_irrelevant_terms)>0) 
+        df_irrelevant_terms[df_irrelevant_terms$Category == prev_category_name,'Category'] <<- new_category_name
+      if(nrow(df_negations)>0)
+        df_negations[df_negations$Category == prev_category_name,'Category'] <<- new_category_name
+      if(nrow(df_exceptions)>0)
+        df_exceptions[df_exceptions$Category == prev_category_name,'Category'] <<- new_category_name
+      if(nrow(df_similar_terms)>0)
+        df_similar_terms[df_similar_terms$Category == prev_category_name,'Category'] <<- new_category_name
+      
+      refreshTable('simclins')
+      refreshTable('irrelevant_terms')
+      refreshTable('negations')
+      refreshTable('exceptions')
+      refreshTable('similar_terms')
+      
+      logAction (userId = currentUserId, operation = "Rename category", valueBefore = prev_category_name, valueAfter = new_category_name)
+      
+      removeModal()
+    } 
+    
+  })
+  #############################################################################################################
+  # Function deleteCategory  - Delete selected category with simclins (tab 'Change category')
+  #############################################################################################################
+  deleteCategory <- function(category_name,fl_delete_simclins = FALSE, fl_delete_subcategories = FALSE)
+  {
+    # get current selected node of the tree
+    selected_node_text  <- category_name
+    
+    if (length(selected_node_text)==0) {
+      showModal(modalDialog(title = "Error message",  "Please, select the category of the tree!",easyClose = TRUE))
+    } else {
+      
+      #read the current tree as dataframe
+      filename <- paste0(app_dir,"simclins_tree.csv")
+      simclins_tree_json <-  readLines(filename,encoding="UTF-8")
+      simclins_tree_df<-jsonlite::fromJSON(simclins_tree_json)
+      if (nrow(simclins_tree_df)==1){
+        showModal(modalDialog(title = "Error message",  "This is the last category in the tree and we cant delete it. Please, add the other category before removing this category!",easyClose = TRUE))
+      } else {
+        # get the text of node to delete(category name is unique in the tree)
+        
+        selected_node_id <- simclins_tree_df[simclins_tree_df[,'text']==selected_node_text,'id']
+        selected_node_subcategories <- simclins_tree_df[simclins_tree_df[,'parent']==selected_node_id,]
+        
+        if(nrow(selected_node_subcategories)>0) {
+          if(fl_delete_subcategories)
+            while (nrow(selected_node_subcategories)>0){
+              deleteCategory(selected_node_subcategories[1,'text'], fl_delete_simclins, fl_delete_subcategories)
+              simclins_tree_json <-  readLines(filename,encoding="UTF-8")
+              simclins_tree_df<-jsonlite::fromJSON(simclins_tree_json)
+              selected_node_subcategories <- simclins_tree_df[simclins_tree_df[,'parent']==selected_node_id,]
+            }
+          else {
+            showModal(modalDialog(title = "Error message",  paste0("The category \"",selected_node_text,"\" has subcategories. Please, delete its subcategories before."),easyClose = TRUE))
+            return(FALSE)
+          }
+        }
+        
+        selected_node_parent_id <- simclins_tree_df[simclins_tree_df[,'text']==selected_node_text,'parent']
+        
+        simclins_in_deleted_category<-nrow(df_simclins[which(df_simclins$Category ==selected_node_text),])
+        fl_with_simclins <- (simclins_in_deleted_category>0)
+        
+        if(fl_with_simclins & !fl_delete_simclins){
+          showModal(modalDialog(title = "Error message",  paste0("The category \"",selected_node_text,"\" has simclins. Please, delete its simclins before."),easyClose = TRUE))
+          return(FALSE)
+        } else {
+          
+          simclins_tree_df <- simclins_tree_df[simclins_tree_df[,'text']!=selected_node_text,]
+          logAction (userId = currentUserId, operation = "Delete simclins of deleted category", valueAfter = as.character(selected_node_text))
+          
+          #select the parent node
+          simclins_tree_df$state['selected']$selected <- FALSE
+          
+          if(identical(selected_node_parent_id, character(0)) | selected_node_parent_id=='#'){
+            simclins_tree_df[min(simclins_tree_df[,'id']),'state']<-t(c(TRUE,TRUE))
+          } else {
+            simclins_tree_df[selected_node_parent_id,'state']<-t(c(TRUE,TRUE))
+          }
+          
+          #update the category tree in the settings section
+          result_list<-treedf2list(simclins_tree_df)
+          updateTree(session,"simclins_tree_settings",result_list)
+          
+          # save updated tree as dataframe to csv-file
+          saveCategoryTree_settings(result_list)
+          updateTree(session,"simclins_tree_settings",result_list)
+          
+          
+          if (fl_with_simclins){
+            df_selected_rows = data.table (Similar_term=df_simclins[which(df_simclins$Category ==selected_node_text),"Simclins"])
+            deleted_simclins_str = paste0(as.character(nrow(df_selected_rows))," simclins deleted: ",paste(df_selected_rows[['Similar_term']],collapse=" ")," from the category ",selected_node_text,".")
+            logAction (userId = currentUserId, operation = "Delete simclins with category", valueAfter = deleted_simclins_str)
+            rm(df_selected_rows)
+            df_simclins <<- df_simclins[df_simclins$Category!=selected_node_text,]
+            
+            refreshTable('simclins')
+            showModal(modalDialog(title = "Information",  paste0("The category ",selected_node_text," and ",simclins_in_deleted_category," its simclins were deleted!"),easyClose = TRUE))
+            
+          }
+        }
+        
+        
+      }
+    }
+  }
+  #############################################################################################################
+  # Function saveSelectedCategory  - Save selected category to the file
+  #############################################################################################################
+  saveSelectedCategory <- function(selected_node_text) {
+    
+    #read the current tree as dataframe
+    filename <- paste0(app_dir,"simclins_tree.csv")
+    simclins_tree_json <-  readLines(filename,encoding="UTF-8")
+    simclins_tree_df<-jsonlite::fromJSON(simclins_tree_json)
+    
+    selected_node_id <- simclins_tree_df[simclins_tree_df[,'text']==selected_node_text,'id']
+    
+    #select the parent node
+    simclins_tree_df$state['selected']$selected <- FALSE
+    
+    if(identical(selected_node_id, character(0))){
+      simclins_tree_df[min(simclins_tree_df[,'id']),'state']<-t(c(TRUE,TRUE))
+    } else {
+      simclins_tree_df[selected_node_id,'state']<-t(c(TRUE,TRUE))
+    }
+    
+    #update the category tree in the settings section
+    result_list<-treedf2list(simclins_tree_df)
+    
+    # save updated tree as dataframe to csv-file
+    saveCategoryTree_settings(result_list)
+    
+  }
   
+  #############################################################################################################
+  # Handler event of selecting category in the tree
+  # Update filters in simclins and similar_terms tables by selected category in the tree
+  #############################################################################################################
+  
+  observe({
+    
+    #get current selected category
+    newSelectedCategory <- getNewSelectedCategory(input$simclins_tree_settings)
+    if (newSelectedCategory!="")   userSettings$selectedCategory <-newSelectedCategory
+    
+    saveSelectedCategory(userSettings$selectedCategory)
+    
+    # update tables - without saving the selection
+    df_simclins$Category <- factor(df_simclins$Category)
+    output$simclins_table = DT::renderDataTable(df_simclins,
+                                                filter = list(position = 'top', clear = FALSE),
+                                                options = list(order=list(0, 'asc'),pageLength = 10,columnDefs = list(list(targets = c(2,3), searchable = FALSE))
+                                                               ,searchCols = list(NULL, list(search =  paste0('["',userSettings$selectedCategory,'"]')),NULL,NULL)
+                                                               # ,searchCols = list(NULL, list(regex = TRUE, caseInsensitive = FALSE, search =  '^swall$',smart = FALSE),NULL,NULL)
+                                                ),colnames = c("Simclins","Category","Processed","Examples"),rownames=FALSE, escape = FALSE)
+    df_similar_terms$Category <- factor(df_similar_terms$Category)
+    output$similar_terms_table = DT::renderDataTable(df_similar_terms,
+                                                     filter = list(position = 'top', clear = FALSE), 
+                                                     options = list(order=list(2,'desc') ,pageLength = 100,stateSave = TRUE,columnDefs = list(list(targets = c(2,3,4,5), searchable = FALSE))
+                                                                    ,searchCols = list(NULL, list(search =  paste0('["',userSettings$selectedCategory,'"]')),NULL,NULL,NULL)
+                                                                    
+                                                     )#,colnames = c("Similar terms","Category","Distance","By simclins","Examples")
+                                                     ,callback=DT::JS('table.on("page.dt",function() {var topPos = document.getElementById("div_similar_terms").offsetTop; window.scroll(0,topPos);})')
+                                                     ,rownames=FALSE, escape = FALSE)
+    
+    html( html = paste0("Category: ", userSettings$selectedCategory), add = FALSE, selector = "span.navbar-brand:first")
+    df_irrelevant_terms$Category <- factor(df_irrelevant_terms$Category)
+    output$irrelevant_similar_terms_table = DT::renderDataTable(df_irrelevant_terms,
+                                                                filter = list(position = 'top', clear = FALSE),
+                                                                options = list(order=list(0, 'asc'),pageLength = 10,columnDefs = list(list(targets = c(2,3), searchable = FALSE))
+                                                                               ,searchCols = list(NULL, list(search = paste0('["',userSettings$selectedCategory,'"]')),NULL,NULL)
+                                                                ),colnames = c("Similar_terms","Category","Frequency","Examples"),rownames=FALSE, escape = FALSE)
+    
+    output$curr_category_negations_table = DT::renderDataTable(df_negations,
+                                                               filter = list(position = 'top', clear = FALSE),
+                                                               options = list(order=list(3, 'desc'),pageLength = 10,columnDefs = list(list(targets = c(0,1,3,4), searchable = FALSE))
+                                                                              ,searchCols = list(NULL, NULL,list(search = userSettings$selectedCategory),NULL,NULL)
+                                                               ),
+                                                               colnames = c("Negations","Type","Category","Frequency (%)","Examples"),rownames=FALSE, escape = FALSE)
+    
+    output$curr_category_exceptions_table  <- DT::renderDataTable(df_exceptions,
+                                                                  filter = list(position = 'top', clear = FALSE),
+                                                                  options = list(order=list(2,'desc'),pageLength = 10,columnDefs = list(list(targets = c(0,2,3), searchable = FALSE))
+                                                                                 ,searchCols = list(NULL, list(search = userSettings$selectedCategory),NULL,NULL)
+                                                                ),
+                                                                colnames = c('Exception','Category','Frequency (%)','Examples'),rownames=FALSE, escape = FALSE)
+    
+  })
+
   #############################################################################################################
   # 6. Machine learning
   #############################################################################################################
@@ -3868,13 +4268,16 @@ server <- function(input, output, session) {
     
     source_txt <<- ""
     
-    model <<- NULL
+    models_files <<- list.files(path = app_dir, pattern = "\\.bin|\\.rds")
+    models <<- vector("list", length(models_files))
     
     fl_first_view_of_search_results <<- FALSE
     fl_selectAllSimilar_terms <<- FALSE
     fl_deselectAllSimilar_terms <<- FALSE
     fl_selectAllNewFeatures <<- FALSE
     fl_next_search_in_process<<- FALSE
+    
+    global_error_message <<- "" 
     
     userSettings <<- reactiveValues(selectedCategory = getSavedSelectedCategory())
     updateTabsetPanel(session, "headerNavBar", selected = "2. Simclin explorer")
@@ -3942,11 +4345,11 @@ server <- function(input, output, session) {
     loadCategoryTree()
     
     # Similar_terms uploading
-    df_similar_terms <<- read.csv(paste0(app_dir,"similar_terms.csv"),header = TRUE, col.names = c('Similar_term','Category','Distance','By_simclins','Lexical_variant','Examples'),stringsAsFactors=FALSE)
+    df_similar_terms <<- read.csv(paste0(app_dir,"similar_terms.csv"),header = TRUE, col.names = c('Similar_term','Category','Distance','By_simclins','Lexical_variant','Model','Examples'),stringsAsFactors=FALSE)
     
     output$similar_terms_table = DT::renderDataTable(df_similar_terms,filter = list(position = 'top', clear = FALSE), options = list(pageLength = 100,stateSave = TRUE,order=list(list(5,'asc'),list(3,'desc')) ,columnDefs = list(list(targets = c(3,4,5), searchable = FALSE))
                                                                                                                                      ,searchCols = list(NULL, list(search = userSettings$selectedCategory),NULL,NULL,NULL))
-                                                     ,colnames = c("Similar terms","Category","Distance","By simclins","Lexical_variant","Examples")
+                                                     ,colnames = c("Similar terms","Category","Distance","By simclins","Lexical variant","Model","Examples")
                                                      ,callback=DT::JS('table.on("page.dt",function() {var topPos = document.getElementById("div_similar_terms").offsetTop; window.scroll(0,topPos);})')
                                                      ,rownames=FALSE, escape = FALSE)
     
