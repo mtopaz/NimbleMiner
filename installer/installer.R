@@ -5,22 +5,18 @@ packageslInstallation <- function(names_of_packages){
   sapply(new_packages, require, character.only = TRUE)
 }
 
-
 packages <- c("shiny", "stringi", "data.table", "DT", "shinythemes", "ggplot2", "keras", "readr", "shinyTree", "shinyjs", "tm", "xtable",
-              "tau", "stopwords", "caret","devtools")
+              "tau", "stopwords", "caret","fs","devtools")
+
 packageslInstallation(packages)
 
-cat("Please, enter the path to the folder with packages rword2vec and wordVectors (for example, on Windows \"C:/NimbleMiner/installer\" or on Mac \"/Users/User1/Documents/NimbleMiner/installer\"")
-packages_dir <- readLines(con=stdin(),1)
+packages_dir <- paste0(getSrcDirectory(function(x) {x}),"/");
 
 library(devtools)
 
-if(Sys.info()['sysname']=='Windows'){
-  install(paste0(packages_dir,"\\rword2vec"))
-  install(paste0(packages_dir,"\\wordVectors"))
-  install(paste0(packages_dir,"\\RTextTools"))
-} else {
-  install(paste0(packages_dir,"/rword2vec"))
-  install(paste0(packages_dir,"/wordVectors"))
-  install(paste0(packages_dir,"/RTextTools"))  
-}  
+unzip(paste0(packages_dir,"/rword2vec.zip"),exdir=paste0(packages_dir,"/rword2vec"))
+install(paste0(packages_dir,"/rword2vec/rword2vec"))
+unzip(paste0(packages_dir,"/wordVectors.zip"),exdir=paste0(packages_dir,"/wordVectors"))
+install(paste0(packages_dir,"/wordVectors/wordVectors"))
+install.packages(paste0(packages_dir,"/RTextTools.tar.gz"), repos = NULL, type="source")
+  
