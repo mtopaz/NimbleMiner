@@ -1,5 +1,5 @@
-# NimbleMiner: a software that allows clinicians to interact with word embedding models (skip-gram models - word2vec by package rword2vec; GloVe) to rapidly create lexicons of similar terms.
-# version: 0.51 (Models building, Search of similar terms, Negations (with exceptions), Irrelevant terms, Machine learning by SVM and LSTM)
+# NimbleMiner: a software that allows clinicians to interact with word embedding models (skip-gram models - word2vec by package wordVectors and GloVe) to rapidly create lexicons of similar terms.
+# version: 0.52 (Models building, Search of similar terms, Negations (with exceptions), Irrelevant terms, Machine learning by SVM and LSTM)
 #####################################
 
 library(shiny)
@@ -59,10 +59,16 @@ ui <- fluidPage(
                         sliderInput(inputId = "setting_min_count",
                                     label = "Set a minimum count:",
                                     value = 20, min = 1, max = 100),
-                        tags$hr(),
+
                         sliderInput(inputId = "setting_similar_terms_count",
                                     label = "How many similar terms should be presented for every simclin?",
                                     value = 50, min = 5, max = 200),
+            
+                        fluidRow(
+                          column(8,
+                                selectInput('buildModel_startStep_input', 'Choose the start step:', c("1. Text preprocessing (train.txt file is expected in app folder)" = "TP", "2. Vocabulary bulding  (train1.txt file is expected in app folder)" = "VB"), width = "100%")
+                            )
+                        ),                                  
                         tags$hr(),                        
                         actionButton("buildModel_word2vec_click", "Build word2vec model", icon = icon("play")),
                         actionButton("buildModel_GloVe_click", "Build GloVe model", icon = icon("play")),
@@ -1121,7 +1127,7 @@ server <- function(input, output, session) {
                                                                     options = list(order=list(2,'desc'),pageLength = 10,columnDefs = list(list(targets = c(0,2,3), searchable = FALSE))
                                                                                    ,searchCols = list(NULL,list(search = userSettings$selectedCategory),NULL,NULL)),
                                                                     colnames = c('Exception','Category','Frequency (%)','Examples'),rownames=FALSE, escape = FALSE)
-  
+      
       
       write.csv(df_exceptions, file = paste0(app_dir,"negations-exceptions.csv"), fileEncoding = "UTF-8")
     }
@@ -1241,9 +1247,9 @@ server <- function(input, output, session) {
     on.exit(progress$close())
     
     #pre-process the data
-    progress$set(message = "Pre-process the data", value = 1)
+    progress$set(message = "Building the model", detail = "data pre-processing...", value = 1)
     fileName_source <- paste0(app_dir,"train.txt")
-    if(!file.exists(fileName_source) | file.info(fileName_source)$size==0){
+    if(input$buildModel_startStep_input == "TP" &  (!file.exists(fileName_source) | file.info(fileName_source)$size==0)){
       showModal(modalDialog(title = "Error message",  paste0("The file for pre-processing ",fileName_source," was not found."),easyClose = TRUE))
       return()
     }    
@@ -1251,7 +1257,8 @@ server <- function(input, output, session) {
     
     fileName_clean <- paste0(app_dir,"train1.txt")
     
-    TextPreprocess(fileName_in = fileName_source, fileName_out = fileName_clean)
+    if(input$buildModel_startStep_input == "TP")
+      TextPreprocess(fileName_in = fileName_source, fileName_out = fileName_clean)
     
     if(!file.exists(fileName_clean) | file.info(fileName_clean)$size==0){
       showModal(modalDialog(title = "Error message",  paste0("The file for model training ",fileName_clean," was not found."),easyClose = TRUE))
@@ -1268,7 +1275,7 @@ server <- function(input, output, session) {
     if('GloVe' %in% model_names)
       # building Glove word embedding model (Assignment #1)
       #buildModel_Glove(app_dir,layers, min_count)
-      buildModel_GloVe('train.txt',n_grams = n_grams, const_layer_size = layers,  window = window, min_count = min_count)
+      buildModel_GloVe("train1.txt",n_grams = n_grams, const_layer_size = layers,  window = window, min_count = min_count)
     #if('Elmo' %in% model_names)
     # building elmo word embedding model  (Assignment #1)
     # buildModel_Elmo()
@@ -1351,7 +1358,7 @@ server <- function(input, output, session) {
     buildModels('word2vec',app_dir,n_grams, const_layer_size , input$setting_window, input$setting_min_count)
     
   })
-
+  
   #############################################################################################################
   # Function win_word2vec - call the C code of word2vec from dll/word2vec.dll (only for Windows)
   #############################################################################################################  
@@ -1444,11 +1451,7 @@ server <- function(input, output, session) {
                            classes = 0 # if >0 make k-means clustering
   )
   {
-    if(Sys.info()['sysname']=='Windows') {
-      win_word2vec(input_filename, output_filename,binary,cbow, num_threads, num_features, window, min_count, sample, classes)
-    } else {
       wordVectors::train_word2vec(train_file = input_filename,output_file = output_filename,cbow = 0, threads = num_threads,window = window,vectors = num_features,min_count = min_count,classes = classes, force = TRUE)
-    }
   }
   #############################################################################################################
   # Function fun_word2phrase - for Windows call C-function from dll/word2phrase.dll. 
@@ -1458,21 +1461,12 @@ server <- function(input, output, session) {
                               min_count = 20, # minimum word count
                               threshold=100) # The <float> value represents threshold for forming the phrases (higher means less phrases); default 100                        )
   {
-    if(Sys.info()['sysname']=='Windows') {
-      win_word2phrase(input_filename, output_filename,min_count,threshold)
-    } else {
       wordVectors::word2phrase(train_file = input_filename,output_file = output_filename,min_count = min_count, threshold = threshold, force = TRUE)
-    }
   }
   #############################################################################################################
   # Function buildModel_word2vec - build word2vec word embedding model
   #############################################################################################################  
   buildModel_word2vec <- function(model_dir,n_grams =2, const_layer_size = 100, window = 10, min_count = 10){
-    
-    if(Sys.info()['sysname']=='Windows') {
-      dyn.load("dll/word2vec.dll")
-      dyn.load("dll/word2phrase.dll")
-    }
     
     #create bigram model- the file path here needs to be without spaces- otheriwise it doesn't work!!!
     if(n_grams>1){
@@ -1494,11 +1488,7 @@ server <- function(input, output, session) {
       cat("creating unigram model...")
       fun_word2vec(paste0(model_dir,"train1.txt"), paste0(model_dir,"train.bin"),num_features = const_layer_size, window = window, min_count = min_count)
     }
-    
-    if(Sys.info()['sysname']=='Windows') {
-      dyn.unload("dll/word2vec.dll")
-      dyn.unload("dll/word2phrase.dll")
-    }
+
   }
   #############################################################################################################
   # Function buildModel_GloVe - build GloVe word embedding model
@@ -1514,14 +1504,38 @@ server <- function(input, output, session) {
     
     file_size = file.info(paste0(app_dir,model_filename))$size
     in.file = file(model_filename, "r")
-    start_time <- Sys.time()
-    train_text <-    readChar(in.file,file_size)
-    print(paste0("readChar time:",as.character(round((difftime(Sys.time(),start_time,units = "secs")),2))))
+    # start_time <- Sys.time()
+    # train_text <-    readChar(in.file,file_size)
+    # print(paste0("readChar time:",as.character(round((difftime(Sys.time(),start_time,units = "secs")),2))))
     
     start_time <- Sys.time()
-    tokens = word_tokenizer(train_text)
+    length_of_text_chunk = 5e7
+    train_text = ""
+    curr_chunk <- readChar(in.file,length_of_text_chunk)
+    length_of_curr_chunk <- nchar(curr_chunk)    
+    i=1
+    while( length_of_curr_chunk >0  ) {
+      print(paste("Tokenizing ", i," part of text..."))    
+      if(length_of_curr_chunk>0){
+        
+        #includes whole last word to the current chunk
+        length_end_of_word = 1
+        while (length_end_of_word>0 & grepl("\\w",substring(curr_chunk,length_of_curr_chunk,length_of_curr_chunk))) {
+          end_of_word <- readChar(in.file,1)
+          length_end_of_word <- ifelse(length(end_of_word)==0,0,nchar(end_of_word))
+          curr_chunk <- paste0(curr_chunk,end_of_word)
+          length_of_curr_chunk = length_of_curr_chunk+1
+        }
+        
+        tokens = c(tokens,word_tokenizer(curr_chunk))
+        i=i+1
+        curr_chunk <- readChar(in.file,length_of_text_chunk)
+        length_of_curr_chunk <- ifelse(length(curr_chunk)==0,0,nchar(curr_chunk))      
+      }
+    }
+    close( in.file )  
+    
     print(paste0("word_tokenizer time:",as.character(round((difftime(Sys.time(),start_time,units = "secs")),2))))
-    
     
     start_time <- Sys.time()    
     it = itoken(tokens)
@@ -1542,7 +1556,7 @@ server <- function(input, output, session) {
     tcm = create_tcm(it, vectorizer, skip_grams_window = window, skip_grams_window_context  = "symmetric")
     print(paste0("create tcm time:",as.character(round((difftime(Sys.time(),start_time,units = "secs")),2))))
     
-
+    
     glove_model = GloVe$new(word_vectors_size  = const_layer_size, vocabulary = v, x_max = 10, learning_rate = .25)
     
     start_time <- Sys.time() 
@@ -1555,7 +1569,7 @@ server <- function(input, output, session) {
     start_time <- Sys.time()
     saveRDS(word_vectors, paste0(app_dir,"train_Glove.rds" ))
     print(paste0("saveRDS time:",as.character(round((difftime(Sys.time(),start_time,units = "secs")),2))))
-
+    
   }  
   #############################################################################################################
   # Handler event of button click 'Build GloVe model' (tab 1. Model builder)
@@ -1566,7 +1580,7 @@ server <- function(input, output, session) {
     buildModels('GloVe',app_dir,n_grams, const_layer_size , input$setting_window, input$setting_min_count)
     
   })
-    
+  
   #############################################################################################################
   # 2. Simclins explorer
   #############################################################################################################
@@ -1853,7 +1867,7 @@ server <- function(input, output, session) {
     on.exit(progress$close())
     
     const_multipl_similar_terms <- 10
-
+    
     if (length(models_files)==0){
       showModal(modalDialog(title = "Error message",  "No any model is found! Please, build at least the base model before.",easyClose = TRUE))
       return()
@@ -1865,8 +1879,8 @@ server <- function(input, output, session) {
     df_cashed_similar_terms <- data.frame()
     
     model_method <- input$select_model_method
-
-
+    
+    
     if (nrow(df_new_simclins)>0) {
       
       for(model_indx in 1:length(models_files)){
@@ -1886,7 +1900,7 @@ server <- function(input, output, session) {
           else if( model_type == 'GloVe')
             models[[model_indx]] <<- readRDS(paste0(app_dir,models_files[model_indx]))
         }
-
+        
         for(i in 1:nrow(df_new_simclins)) {
           start_time <- Sys.time()
           
@@ -1900,20 +1914,20 @@ server <- function(input, output, session) {
           
           # get num closest words from word2vec model          
           if(model_type == 'word2vec') {
-              # load model into memory (package wordVectors)
-              if(model_method==1){
-                df_new_similar_terms = closest_to(models[[model_indx]],simclin_str,input$setting_similar_terms_count*const_multipl_similar_terms+1,FALSE) #wordVectors +1 - because it return the simclin with distance 1 too
-                #remove words with 0 distance 
-                df_new_similar_terms<-df_new_similar_terms[!is.nan(df_new_similar_terms[,2]),]
-                
-              }
-              # dont load model into memory (package rword2vec)
-              else {
-                df_new_similar_terms = rword2vec::distance(file_name = models_files[model_indx],search_word = simclin_str,num = input$setting_similar_terms_count*const_multipl_similar_terms)
-                #remove words with 0 distance 
-                df_new_similar_terms<-df_new_similar_terms[!is.nan(df_new_similar_terms[,2]) & df_new_similar_terms[,2]!=-1,]
-                
-              }
+            # load model into memory (package wordVectors)
+            if(model_method==1){
+              df_new_similar_terms = closest_to(models[[model_indx]],simclin_str,input$setting_similar_terms_count*const_multipl_similar_terms+1,FALSE) #wordVectors +1 - because it return the simclin with distance 1 too
+              #remove words with 0 distance 
+              df_new_similar_terms<-df_new_similar_terms[!is.nan(df_new_similar_terms[,2]),]
+              
+            }
+            # dont load model into memory (package rword2vec)
+            else {
+              df_new_similar_terms = rword2vec::distance(file_name = models_files[model_indx],search_word = simclin_str,num = input$setting_similar_terms_count*const_multipl_similar_terms)
+              #remove words with 0 distance 
+              df_new_similar_terms<-df_new_similar_terms[!is.nan(df_new_similar_terms[,2]) & df_new_similar_terms[,2]!=-1,]
+              
+            }
             
           } 
           # get num closest words from GloVe model          
@@ -1940,44 +1954,44 @@ server <- function(input, output, session) {
               df_new_similar_terms<-df_new_similar_terms[!is.nan(df_new_similar_terms[,2]) & df_new_similar_terms[,2]!=-1,]            
             }  else df_new_similar_terms = data.frame()
           }          
-        
+          
           print(paste0("Search in model ",models_files[model_indx],": ",as.character(round((difftime(Sys.time(),start_time_search,units = "secs")),2))))
-
-
+          
+          
           #if there are new similar terms
           if (nrow(df_new_similar_terms)>0){
             
-              start_time_process = Sys.time()
-              df_new_similar_terms$Model <- models_files[model_indx]
-              df_new_similar_terms$By_simclins <- simclin_str
-              colnames(df_new_similar_terms)[2]<-"dist"
-              
-              
-              factor_cols <- sapply(df_new_similar_terms, is.factor)
-              df_new_similar_terms[factor_cols] <- lapply(df_new_similar_terms[factor_cols], as.character)
-              
-              # Ignore empty words, unicode padding and unicode file header
-              df_new_similar_terms <- df_new_similar_terms[!is.na(df_new_similar_terms$word) & df_new_similar_terms$word!="" & df_new_similar_terms$word!="\376" & df_new_similar_terms$word!="\377",]
-              
-              if(model_indx==1){
-                df_similar_terms_as_result <- rbind(df_similar_terms_as_result,head(df_new_similar_terms,input$setting_similar_terms_count))
-                df_cashed_similar_terms <- rbind(df_cashed_similar_terms,tail(df_new_similar_terms,nrow(df_new_similar_terms)-input$setting_similar_terms_count))
-              } else   df_cashed_similar_terms <- rbind(df_cashed_similar_terms,df_new_similar_terms)
-              
-              # check for close words by Levenshtein distance
-              closest_by_lv <- closestByLevenstein(simclin_str,df_cashed_similar_terms[,'word'], max = 2)
-              
-              if(length(closest_by_lv)>0){
-                df_similar_terms_closest_by_lv <- df_cashed_similar_terms[closest_by_lv,]
-                df_cashed_similar_terms <- df_cashed_similar_terms[!closest_by_lv,]         
-                df_similar_terms_as_result <-rbind(df_similar_terms_as_result,df_similar_terms_closest_by_lv)
-              }  
-              print(paste0("Processing of search results: ",as.character(round((difftime(Sys.time(),start_time_process,units = "secs")),2))))
-            } else {
-              print(paste0("There are no any similar terms for '",simclin_str,"' in model ",models_files[model_indx],"."))
-            }   
-            # mark this simclin as processed 
-            df_simclins[df_simclins$Simclins==simclin_str &  df_simclins$Category==category_str,'Processed'] <<-TRUE
+            start_time_process = Sys.time()
+            df_new_similar_terms$Model <- models_files[model_indx]
+            df_new_similar_terms$By_simclins <- simclin_str
+            colnames(df_new_similar_terms)[2]<-"dist"
+            
+            
+            factor_cols <- sapply(df_new_similar_terms, is.factor)
+            df_new_similar_terms[factor_cols] <- lapply(df_new_similar_terms[factor_cols], as.character)
+            
+            # Ignore empty words, unicode padding and unicode file header
+            df_new_similar_terms <- df_new_similar_terms[!is.na(df_new_similar_terms$word) & df_new_similar_terms$word!="" & df_new_similar_terms$word!="\376" & df_new_similar_terms$word!="\377",]
+            
+            if(model_indx==1){
+              df_similar_terms_as_result <- rbind(df_similar_terms_as_result,head(df_new_similar_terms,input$setting_similar_terms_count))
+              df_cashed_similar_terms <- rbind(df_cashed_similar_terms,tail(df_new_similar_terms,nrow(df_new_similar_terms)-input$setting_similar_terms_count))
+            } else   df_cashed_similar_terms <- rbind(df_cashed_similar_terms,df_new_similar_terms)
+            
+            # check for close words by Levenshtein distance
+            closest_by_lv <- closestByLevenstein(simclin_str,df_cashed_similar_terms[,'word'], max = 2)
+            
+            if(length(closest_by_lv)>0){
+              df_similar_terms_closest_by_lv <- df_cashed_similar_terms[closest_by_lv,]
+              df_cashed_similar_terms <- df_cashed_similar_terms[!closest_by_lv,]         
+              df_similar_terms_as_result <-rbind(df_similar_terms_as_result,df_similar_terms_closest_by_lv)
+            }  
+            print(paste0("Processing of search results: ",as.character(round((difftime(Sys.time(),start_time_process,units = "secs")),2))))
+          } else {
+            print(paste0("There are no any similar terms for '",simclin_str,"' in model ",models_files[model_indx],"."))
+          }   
+          # mark this simclin as processed 
+          df_simclins[df_simclins$Simclins==simclin_str &  df_simclins$Category==category_str,'Processed'] <<-TRUE
           
           
           
@@ -1991,7 +2005,7 @@ server <- function(input, output, session) {
       start_time_final_process = Sys.time()
       
       refreshTable('simclins')
-
+      
       if(nrow(df_similar_terms_as_result)>0){
         df_similar_terms_as_result[,2]<-round(as.numeric(df_similar_terms_as_result[,2]),2)
       }
@@ -2312,7 +2326,7 @@ server <- function(input, output, session) {
     print("Reading text file...")
     
     df_corpus_to_label <- read.csv(filename,header = TRUE, stringsAsFactors=FALSE,comment.char = "", colClasses = "character",fileEncoding = "UTF-8")
-
+    
     notes_column_index <- getColumnToUpload(df_corpus_to_label,"Note",c("character","factor"))
     
     if(notes_column_index==0){
@@ -2320,7 +2334,7 @@ server <- function(input, output, session) {
     }
     
     colnames(df_corpus_to_label)[notes_column_index]<-'Note'
-
+    
     if(input$unit_type_to_label==2){
       df_corpus_to_label<-subset(df_corpus_to_label, select=Note)
       df_allNotes<-data.frame(Note = unlist(tokenize_paragraphs(df_corpus_to_label$Note)), stringsAsFactors = F)
@@ -2333,7 +2347,7 @@ server <- function(input, output, session) {
       df_allNotes <- df_corpus_to_label
       info_to_user<-paste0(nrow(df_allNotes)," notes")
     }
-
+    
     rm(df_corpus_to_label)
     
     # pre-processing of data for labeling
@@ -2348,16 +2362,9 @@ server <- function(input, output, session) {
     if(length(pattern_list)>0 & nrow(df_allNotes)>0)
       for(i in 1:length(pattern_list)){
         print(paste0("Filtering positive items from ",info_to_user," by ",i,"/",length(pattern_list)," part of simclins list from ",Sys.time()))
-        
-        # start_time <- Sys.time()
-        # for (j in 1:nrow(df_allNotes)){
-        #   if(grepl(pattern_list[i], df_allNotes[j,'Note'], ignore.case = TRUE))
-        #     df_allNotes[j,'Label'] <- TRUE
-        # }
-        # print('Loop:')
-        # print(round((difftime(Sys.time(),start_time,units = "min")),2))
         start_time <- Sys.time()
-        df_allNotes$Label <- grepl(pattern_list[i], df_allNotes$Note, ignore.case = TRUE)
+        new_values <- grepl(pattern_list[i], df_allNotes$Note, ignore.case = TRUE)
+        df_allNotes$Label <- ifelse(new_values == TRUE, TRUE,df_allNotes$Label)
         print(paste0('Duration: ', round((difftime(Sys.time(),start_time,units = "min")),2)))
         
       }
@@ -2529,7 +2536,7 @@ server <- function(input, output, session) {
               curr_simclin = substring(curr_note,pos_start,pos_end)
               
               curr_simclin_categories <- df_simclins_for_search[df_simclins_for_search$Simclin==stri_trans_tolower(curr_simclin),'Category']
-
+              
               #simclin` relevance check
               
               #there are irrelevant expressions for current simclin
@@ -2725,7 +2732,7 @@ server <- function(input, output, session) {
                   tags_irrelevant_simclins<-rbind(tags_irrelevant_simclins,data.frame("word" = curr_simclin, "start" = start_pos_expression_in_note, "end" = end_pos_expression_in_note+1)) 
                 }
               }
-
+              
             } #if(!is.na(pos_start)&!is.na(pos_end))
             prev_pos_end = pos_end
           }#loop over simclins
@@ -2735,35 +2742,35 @@ server <- function(input, output, session) {
         
         #check simclins if they are part of other negated and irrelevant expressions (by coordinates) or other simclins
         if(nrow(tags_simclins)>0) {
-        for(tags_indx_simclins in 1:nrow(tags_simclins)){
-          if(nrow(tags_negated_simclins)>0) 
-          for(tags_indx_negated_simclins in 1:nrow(tags_negated_simclins))
-            if (as.numeric(tags_simclins[tags_indx_simclins,'start'])>=as.numeric(tags_negated_simclins[tags_indx_negated_simclins,'start'])
-                & as.numeric(tags_simclins[tags_indx_simclins,'end'])<=as.numeric(tags_negated_simclins[tags_indx_negated_simclins,'end'])){
-              tags_simclins[tags_indx_simclins,'start']<- 0
-              tags_simclins[tags_indx_simclins,'end']<- 0
-            }
-          if(nrow(tags_irrelevant_simclins)>0) 
-          for(tags_indx_irrelevant_simclins in 1:nrow(tags_irrelevant_simclins))
-            if (as.numeric(tags_simclins[tags_indx_simclins,'start'])>=as.numeric(tags_irrelevant_simclins[tags_indx_irrelevant_simclins,'start'])
-                & as.numeric(tags_simclins[tags_indx_simclins,'end'])<=as.numeric(tags_irrelevant_simclins[tags_indx_irrelevant_simclins,'end'])){
-              tags_simclins[tags_indx_simclins,'start']<- 0
-              tags_simclins[tags_indx_simclins,'end']<- 0
-            }  
-          #remove simclins which re part of other simclins
-          for(tags_indx_simclins2 in 1:nrow(tags_simclins))
-            if (rownames(tags_simclins)[tags_indx_simclins]!=rownames(tags_simclins)[tags_indx_simclins2] & as.numeric(tags_simclins[tags_indx_simclins,'start'])>=as.numeric(tags_simclins[tags_indx_simclins2,'start'])
-                & as.numeric(tags_simclins[tags_indx_simclins,'end'])<=as.numeric(tags_simclins[tags_indx_simclins2,'end'])){
-              tags_simclins[tags_indx_simclins,'start']<- 0
-              tags_simclins[tags_indx_simclins,'end']<- 0
-            } 
+          for(tags_indx_simclins in 1:nrow(tags_simclins)){
+            if(nrow(tags_negated_simclins)>0) 
+              for(tags_indx_negated_simclins in 1:nrow(tags_negated_simclins))
+                if (as.numeric(tags_simclins[tags_indx_simclins,'start'])>=as.numeric(tags_negated_simclins[tags_indx_negated_simclins,'start'])
+                    & as.numeric(tags_simclins[tags_indx_simclins,'end'])<=as.numeric(tags_negated_simclins[tags_indx_negated_simclins,'end'])){
+                  tags_simclins[tags_indx_simclins,'start']<- 0
+                  tags_simclins[tags_indx_simclins,'end']<- 0
+                }
+            if(nrow(tags_irrelevant_simclins)>0) 
+              for(tags_indx_irrelevant_simclins in 1:nrow(tags_irrelevant_simclins))
+                if (as.numeric(tags_simclins[tags_indx_simclins,'start'])>=as.numeric(tags_irrelevant_simclins[tags_indx_irrelevant_simclins,'start'])
+                    & as.numeric(tags_simclins[tags_indx_simclins,'end'])<=as.numeric(tags_irrelevant_simclins[tags_indx_irrelevant_simclins,'end'])){
+                  tags_simclins[tags_indx_simclins,'start']<- 0
+                  tags_simclins[tags_indx_simclins,'end']<- 0
+                }  
+            #remove simclins which re part of other simclins
+            for(tags_indx_simclins2 in 1:nrow(tags_simclins))
+              if (rownames(tags_simclins)[tags_indx_simclins]!=rownames(tags_simclins)[tags_indx_simclins2] & as.numeric(tags_simclins[tags_indx_simclins,'start'])>=as.numeric(tags_simclins[tags_indx_simclins2,'start'])
+                  & as.numeric(tags_simclins[tags_indx_simclins,'end'])<=as.numeric(tags_simclins[tags_indx_simclins2,'end'])){
+                tags_simclins[tags_indx_simclins,'start']<- 0
+                tags_simclins[tags_indx_simclins,'end']<- 0
+              } 
+          }
+          tags_simclins <- tags_simclins[tags_simclins$start>0 & tags_simclins$end>0,]
+          all_simclins_of_note <- paste(sort(unlist(lapply(unique(tags_simclins$word),as.character))),collapse = ', ')     
         }
-        tags_simclins <- tags_simclins[tags_simclins$start>0 & tags_simclins$end>0,]
-        all_simclins_of_note <- paste(sort(unlist(lapply(unique(tags_simclins$word),as.character))),collapse = ', ')     
-      }
         curr_note_negations <- paste(sort(unique(curr_note_negations)),collapse = ', ')   
         curr_note_irrelevant_terms <- paste(sort(unique(curr_note_irrelevant_terms)),collapse = ', ')   
-
+        
         #join all tags with their positions
         tags_all <- data.frame(matrix(ncol = 2, nrow = 0))
         colnames(tags_all) <- c("pos","tag")
@@ -2786,10 +2793,10 @@ server <- function(input, output, session) {
         
         #insert tags
         if(nrow(tags_all)>0)
-        for(tag_indx in (1:nrow(tags_all))){
-          curr_note <- paste0(substring(curr_note,1,tags_all$pos[tag_indx]-1),tags_all$tag[tag_indx],substring(curr_note,as.numeric(tags_all$pos[tag_indx])))
-        }
-
+          for(tag_indx in (1:nrow(tags_all))){
+            curr_note <- paste0(substring(curr_note,1,tags_all$pos[tag_indx]-1),tags_all$tag[tag_indx],substring(curr_note,as.numeric(tags_all$pos[tag_indx])))
+          }
+        
         #if there is at least one not negated and not irrelevant simclin - the patient's note is labeled as TRUE
         if (nrow(tags_simclins) >0 ) {
           
@@ -2845,6 +2852,9 @@ server <- function(input, output, session) {
     df_labeled_data <- rbind(df_positiveLabels,df_labeled_data, fill = TRUE)
     df_labeled_data<-df_labeled_data[with(df_labeled_data, order(NimbleMiner_ID)), ]
     df_labeled_data$NimbleMiner_ID<-NULL
+    df_labeled_data$Note <- gsub("<span class='true-simclin'>", "", df_labeled_data$Note)
+    df_labeled_data$Note <- gsub("<span class='false-simclin'>", "", df_labeled_data$Note)
+    df_labeled_data$Note <- gsub("</span>", "", df_labeled_data$Note)
     write.csv(df_labeled_data, file = fileName_all_labeled_data, fileEncoding = "UTF-8", na = "")
     
     total_positive_notes <-nrow(df_positiveLabels)
@@ -3330,7 +3340,7 @@ server <- function(input, output, session) {
   #############################################################################################################
   # Change category - edit categories tree and select current active category
   #############################################################################################################
-
+  
   checkCategoryName<-function(new_category_str) {
     error_msg  = ""
     if (is.na(new_category_str) | new_category_str==""){
@@ -3352,81 +3362,81 @@ server <- function(input, output, session) {
     
     error_msg<- checkCategoryName(categoryName)
     # get title of the new category
-
+    
     if (error_msg==""){
-        # get current selected node of the tree
-        selected_node <- get_selected(input$simclins_tree_settings,format = "classid")
-
-        if (length(selected_node)>0) {
+      # get current selected node of the tree
+      selected_node <- get_selected(input$simclins_tree_settings,format = "classid")
+      
+      if (length(selected_node)>0) {
+        
+        #read the current tree as dataframe
+        filename <- paste0(app_dir,"simclins_tree.csv")
+        simclins_tree_json <- readLines(filename,encoding="UTF-8")
+        
+        simclins_tree_df<-jsonlite::fromJSON(simclins_tree_json)
+        
+        df_existed_category <- simclins_tree_df[tolower(simclins_tree_df$text)==tolower(new_category_str),]
+        
+        if(nrow(df_existed_category)>0) {
           
-          #read the current tree as dataframe
-          filename <- paste0(app_dir,"simclins_tree.csv")
-          simclins_tree_json <- readLines(filename,encoding="UTF-8")
-          
-          simclins_tree_df<-jsonlite::fromJSON(simclins_tree_json)
-          
-          df_existed_category <- simclins_tree_df[tolower(simclins_tree_df$text)==tolower(new_category_str),]
-          
-          if(nrow(df_existed_category)>0) {
-            
-            if (!fl_background_mode)
-              showModal(modalDialog(title = "Error message",  paste0("The category \"",new_category_str,"\" is in the tree already!"),easyClose = TRUE))
-            else result <-df_existed_category$text
-            
-            return(result)
-            
-          } else {
-            
-            # get the text of selected node
-            selected_node_text <- selected_node[[1]][1]
-            
-            # get the parent of the new node
-            if(fl_child){
-              new_parent_id <- simclins_tree_df[simclins_tree_df[,'text']==selected_node_text,'id']
-            }
-            else {
-              new_parent_id <- simclins_tree_df[simclins_tree_df[,'text']==selected_node_text,'parent']
-            }
-            
-            #get the id of the new node
-            new_id <-  max(as.numeric(simclins_tree_df[,'id'])) +1
-            
-            # add new node to the dataframe
-            new_category_row <-jsonlite::fromJSON(paste0('[{"id":"',new_id,'","text":"',new_category_str,'","parent":"',new_parent_id,'","state":{"opened":true,"selected":false}}]'))
-            row.names(new_category_row)<-new_id
-            row.names(new_category_row$state)<-new_id
-            simclins_tree_df <- rbind(simclins_tree_df,new_category_row)
-            
-            #select the new node
-            if (!fl_background_mode){
-              simclins_tree_df$state['selected']$selected <- FALSE
-              selected_node_id <- simclins_tree_df[simclins_tree_df[,'text']==new_category_str,'id']
-              if(!identical(selected_node_id, character(0)))
-                simclins_tree_df[selected_node_id,'state']<-t(c(TRUE,TRUE))
-            }  
-            
-            #update the category tree in the settings section
-            
-            result_list<-treedf2list(simclins_tree_df)
-            if (!fl_background_mode){  
-              updateTree(session,"simclins_tree_settings",result_list)
-            }  
-            
-            #clean the input control
-            if (!fl_background_mode){            
-              updateTextInput(session,"newCategory_input", value = NA)
-            }  
-            
-            # save updated tree as dataframe to csv-file
-            saveCategoryTree_settings(result_list)
-            
-            
-            result <- new_category_str
-          }
-        } else {
           if (!fl_background_mode)
-            showModal(modalDialog(title = "Error message",  "Please, select the category of the tree!",easyClose = TRUE))
+            showModal(modalDialog(title = "Error message",  paste0("The category \"",new_category_str,"\" is in the tree already!"),easyClose = TRUE))
+          else result <-df_existed_category$text
+          
+          return(result)
+          
+        } else {
+          
+          # get the text of selected node
+          selected_node_text <- selected_node[[1]][1]
+          
+          # get the parent of the new node
+          if(fl_child){
+            new_parent_id <- simclins_tree_df[simclins_tree_df[,'text']==selected_node_text,'id']
+          }
+          else {
+            new_parent_id <- simclins_tree_df[simclins_tree_df[,'text']==selected_node_text,'parent']
+          }
+          
+          #get the id of the new node
+          new_id <-  max(as.numeric(simclins_tree_df[,'id'])) +1
+          
+          # add new node to the dataframe
+          new_category_row <-jsonlite::fromJSON(paste0('[{"id":"',new_id,'","text":"',new_category_str,'","parent":"',new_parent_id,'","state":{"opened":true,"selected":false}}]'))
+          row.names(new_category_row)<-new_id
+          row.names(new_category_row$state)<-new_id
+          simclins_tree_df <- rbind(simclins_tree_df,new_category_row)
+          
+          #select the new node
+          if (!fl_background_mode){
+            simclins_tree_df$state['selected']$selected <- FALSE
+            selected_node_id <- simclins_tree_df[simclins_tree_df[,'text']==new_category_str,'id']
+            if(!identical(selected_node_id, character(0)))
+              simclins_tree_df[selected_node_id,'state']<-t(c(TRUE,TRUE))
+          }  
+          
+          #update the category tree in the settings section
+          
+          result_list<-treedf2list(simclins_tree_df)
+          if (!fl_background_mode){  
+            updateTree(session,"simclins_tree_settings",result_list)
+          }  
+          
+          #clean the input control
+          if (!fl_background_mode){            
+            updateTextInput(session,"newCategory_input", value = NA)
+          }  
+          
+          # save updated tree as dataframe to csv-file
+          saveCategoryTree_settings(result_list)
+          
+          
+          result <- new_category_str
         }
+      } else {
+        if (!fl_background_mode)
+          showModal(modalDialog(title = "Error message",  "Please, select the category of the tree!",easyClose = TRUE))
+      }
       
       
     } else {
@@ -3448,41 +3458,41 @@ server <- function(input, output, session) {
     new_category_str = trimws(new_categoryName)
     
     error_msg<- checkCategoryName(new_category_str)
-
+    
     if (error_msg==""){
-  
-        #read the current tree as dataframe
-        filename <- paste0(app_dir,"simclins_tree.csv")
-        simclins_tree_json <- readLines(filename,encoding="UTF-8")
+      
+      #read the current tree as dataframe
+      filename <- paste0(app_dir,"simclins_tree.csv")
+      simclins_tree_json <- readLines(filename,encoding="UTF-8")
+      
+      simclins_tree_df<-jsonlite::fromJSON(simclins_tree_json)
+      
+      df_existed_category <- simclins_tree_df[tolower(simclins_tree_df$text)==tolower(new_category_str),]
+      
+      if(nrow(df_existed_category)>0) {
         
-        simclins_tree_df<-jsonlite::fromJSON(simclins_tree_json)
+        showModal(modalDialog(title = "Error message",  paste0("The category \"",new_category_str,"\" is in the tree already!"),easyClose = TRUE))
+        return(result)
         
-        df_existed_category <- simclins_tree_df[tolower(simclins_tree_df$text)==tolower(new_category_str),]
+      } else {
         
-        if(nrow(df_existed_category)>0) {
-          
-          showModal(modalDialog(title = "Error message",  paste0("The category \"",new_category_str,"\" is in the tree already!"),easyClose = TRUE))
-          return(result)
-          
-        } else {
-
-          
-          # rename node in the dataframe
-          simclins_tree_df[simclins_tree_df[,'text']==prev_categoryName,'text'] = new_category_str
-          
-          #update the category tree in the settings section
-          result_list<-treedf2list(simclins_tree_df)
- 
-          updateTree(session,"simclins_tree_settings",result_list)
-
-          # save updated tree as dataframe to csv-file
-          saveCategoryTree_settings(result_list)
-          
-          result <- new_category_str
-        }
-
+        
+        # rename node in the dataframe
+        simclins_tree_df[simclins_tree_df[,'text']==prev_categoryName,'text'] = new_category_str
+        
+        #update the category tree in the settings section
+        result_list<-treedf2list(simclins_tree_df)
+        
+        updateTree(session,"simclins_tree_settings",result_list)
+        
+        # save updated tree as dataframe to csv-file
+        saveCategoryTree_settings(result_list)
+        
+        result <- new_category_str
+      }
+      
     } else {
-        showModal(modalDialog(title = "Error message",  error_msg ,easyClose = TRUE))
+      showModal(modalDialog(title = "Error message",  error_msg ,easyClose = TRUE))
     }
     
     return(result)
@@ -3604,7 +3614,7 @@ server <- function(input, output, session) {
       )
     )  
   })  
-
+  
   #############################################################################################################
   # Handler event of click button 'Rename' in confirmation message box (tab 'Change category').
   # Call function to rename category
@@ -3624,7 +3634,7 @@ server <- function(input, output, session) {
     new_category_name <- renameCategoryInTree(prev_category_name,new_category_name)
     
     if (new_category_name!=""){
-
+      
       if(nrow(df_simclins)>0) 
         df_simclins[df_simclins$Category == prev_category_name,'Category'] <<- new_category_name
       if(nrow(df_irrelevant_terms)>0) 
@@ -3813,11 +3823,11 @@ server <- function(input, output, session) {
                                                                   filter = list(position = 'top', clear = FALSE),
                                                                   options = list(order=list(2,'desc'),pageLength = 10,columnDefs = list(list(targets = c(0,2,3), searchable = FALSE))
                                                                                  ,searchCols = list(NULL, list(search = userSettings$selectedCategory),NULL,NULL)
-                                                                ),
-                                                                colnames = c('Exception','Category','Frequency (%)','Examples'),rownames=FALSE, escape = FALSE)
+                                                                  ),
+                                                                  colnames = c('Exception','Category','Frequency (%)','Examples'),rownames=FALSE, escape = FALSE)
     
   })
-
+  
   #############################################################################################################
   # 6. Machine learning
   #############################################################################################################
