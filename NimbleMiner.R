@@ -1,5 +1,5 @@
 # NimbleMiner: a software that allows clinicians to interact with word embedding models (skip-gram models - word2vec by package wordVectors and GloVe) to rapidly create lexicons of similar terms.
-# version: 0.53 with package NimbleMiner (Models building (word2vec, GloVe), Search of similar terms, Negations (with exceptions), Irrelevant terms, Machine learning by SVM and LSTM)
+# version: 0.52 (Models building, Search of similar terms, Negations (with exceptions), Irrelevant terms, Machine learning by SVM and LSTM)
 #####################################
 
 library(shiny)
@@ -1593,200 +1593,30 @@ server <- function(input, output, session) {
   observeEvent(input$findSimilar_terms_click, {
     category_str = getSelectedCategory(input$simclins_tree_settings)
     df_new_simclins=df_simclins[df_simclins$Processed==FALSE & df_simclins$Category==category_str,]
-    findSimilarTerms(df_new_simclins,category_str)
-  })
-
-
-  #############################################################################################################
-  # Find similar terms by the simclin in word embedding model (only word2vec now)
-  #############################################################################################################
-  findSimilarTerms<-function(df_new_simclins,category_str){
-
-    #Initialize progress bar
-    progress <- shiny::Progress$new(min=1, max=nrow(df_simclins[df_simclins[,'Processed']==FALSE,]))
-    on.exit(progress$close())
-
-    const_multipl_similar_terms <- 10
-
-    if (length(models_files)==0){
-      showModal(modalDialog(title = "Error message",  "No any model is found! Please, build at least the base model before.",easyClose = TRUE))
-      return()
-    }
-
-    # for each new simclin get closest words
-
-    df_similar_terms_as_result <- data.frame()
-    df_cashed_similar_terms <- data.frame()
-
-    model_method <- input$select_model_method
-
 
     if (nrow(df_new_simclins)>0) {
 
-      for(model_indx in 1:length(models_files)){
-
-        progress$set(message = paste0('Find Similar terms for model ',models_files[model_indx],'...'))
-        progress$set(message = 'Find Similar terms for:')
-
-        if(grepl("\\.rds$",models_files[[model_indx]]))
-          model_type <- 'GloVe'
-        else if(grepl("\\.bin$",models_files[[model_indx]]))
-          model_type <- 'word2vec'
-
-        if(model_method==1 & is.null(models[[model_indx]])){
-          progress$set(message = paste0('Reading a word2vec binary file ',models_files[model_indx]), detail = "")
-          if( model_type == 'word2vec')
-            models[[model_indx]] <<- read.vectors(paste0(app_dir,models_files[model_indx]))
-          else if( model_type == 'GloVe')
-            models[[model_indx]] <<- readRDS(paste0(app_dir,models_files[model_indx]))
-        }
-
-        for(i in 1:nrow(df_new_simclins)) {
-          start_time <- Sys.time()
-
-          row <- df_new_simclins[i,]
-          simclin_str <- as.character(row$Simclins)
-          simclin_str <- gsub(" ","_",simclin_str)
-
-          progress$set(value = i, detail =paste0('Find Similar terms for: ',simclin_str))
-
-          start_time_search = Sys.time()
-
-          # get num closest words from word2vec model
-          if(model_type == 'word2vec') {
-            # load model into memory (package wordVectors)
-            if(model_method==1){
-              df_new_similar_terms = closest_to(models[[model_indx]],simclin_str,input$setting_similar_terms_count*const_multipl_similar_terms+1,FALSE) #wordVectors +1 - because it return the simclin with distance 1 too
-              #remove words with 0 distance
-              df_new_similar_terms<-df_new_similar_terms[!is.nan(df_new_similar_terms[,2]),]
-
-            }
-            # dont load model into memory (package rword2vec)
-            else {
-              df_new_similar_terms = rword2vec::distance(file_name = models_files[model_indx],search_word = simclin_str,num = input$setting_similar_terms_count*const_multipl_similar_terms)
-              #remove words with 0 distance
-              df_new_similar_terms<-df_new_similar_terms[!is.nan(df_new_similar_terms[,2]) & df_new_similar_terms[,2]!=-1,]
-
-            }
-
-          }
-          # get num closest words from GloVe model
-          else if(model_type == 'GloVe') {
-            if(model_method==1){
-              if(simclin_str %in% rownames(models[[model_indx]]))
-                cos_sim = sim2(x = models[[model_indx]], y =  models[[model_indx]][simclin_str, , drop = FALSE], method = "cosine", norm = "l2")
-              else cos_sim = NULL
-            }
-            else {
-              word_vectors <- readRDS(paste0(app_dir,models_files[model_indx]))
-              if(simclin_str %in% rownames(word_vectors))
-                cos_sim = sim2(x = word_vectors, y =  word_vectors[simclin_str, , drop = FALSE], method = "cosine", norm = "l2")
-              else cos_sim = NULL
-              rm(word_vectors)
-            }
-            if (!is.null(cos_sim)){
-              df_new_similar_terms <- head(sort(cos_sim[,1], decreasing = TRUE), input$setting_similar_terms_count*const_multipl_similar_terms+1)
-              df_new_similar_terms <- as.data.frame(df_new_similar_terms)
-              df_new_similar_terms$word <- rownames(df_new_similar_terms)
-              rownames(df_new_similar_terms) <- 1:nrow(df_new_similar_terms)
-              df_new_similar_terms$dist <- df_new_similar_terms[,1]
-              df_new_similar_terms[,1] <- NULL
-              df_new_similar_terms<-df_new_similar_terms[!is.nan(df_new_similar_terms[,2]) & df_new_similar_terms[,2]!=-1,]
-            }  else df_new_similar_terms = data.frame()
-          }
-
-          print(paste0("Search in model ",models_files[model_indx],": ",as.character(round((difftime(Sys.time(),start_time_search,units = "secs")),2))))
-
-
-          #if there are new similar terms
-          if (nrow(df_new_similar_terms)>0){
-
-            start_time_process = Sys.time()
-            df_new_similar_terms$Model <- models_files[model_indx]
-            df_new_similar_terms$By_simclins <- simclin_str
-            colnames(df_new_similar_terms)[2]<-"dist"
-
-
-            factor_cols <- sapply(df_new_similar_terms, is.factor)
-            df_new_similar_terms[factor_cols] <- lapply(df_new_similar_terms[factor_cols], as.character)
-
-            # Ignore empty words, unicode padding and unicode file header
-            df_new_similar_terms <- df_new_similar_terms[!is.na(df_new_similar_terms$word) & df_new_similar_terms$word!="" & df_new_similar_terms$word!="\376" & df_new_similar_terms$word!="\377",]
-
-            if(model_indx==1){
-              df_similar_terms_as_result <- rbind(df_similar_terms_as_result,head(df_new_similar_terms,input$setting_similar_terms_count))
-              df_cashed_similar_terms <- rbind(df_cashed_similar_terms,tail(df_new_similar_terms,nrow(df_new_similar_terms)-input$setting_similar_terms_count))
-            } else   df_cashed_similar_terms <- rbind(df_cashed_similar_terms,df_new_similar_terms)
-
-            # check for close words by Levenshtein distance
-            closest_by_lv <- closestByLevenstein(simclin_str,df_cashed_similar_terms[,'word'], max = 2)
-
-            if(length(closest_by_lv)>0){
-              df_similar_terms_closest_by_lv <- df_cashed_similar_terms[closest_by_lv,]
-              df_cashed_similar_terms <- df_cashed_similar_terms[!closest_by_lv,]
-              df_similar_terms_as_result <-rbind(df_similar_terms_as_result,df_similar_terms_closest_by_lv)
-            }
-            print(paste0("Processing of search results: ",as.character(round((difftime(Sys.time(),start_time_process,units = "secs")),2))))
-          } else {
-            print(paste0("There are no any similar terms for '",simclin_str,"' in model ",models_files[model_indx],"."))
-          }
-          # mark this simclin as processed
-          df_simclins[df_simclins$Simclins==simclin_str &  df_simclins$Category==category_str,'Processed'] <<-TRUE
-
-
-
-        }#loop by simclins
-
-
-      }#loop by models
-
-      #find duplicated terms among models
-
-      start_time_final_process = Sys.time()
-
+      df_similar_terms_as_result = NimbleMiner::findNewSimilarTerms(df_new_simclins, category_str, models_files, similar_terms_count=input$setting_similar_terms_count,load_model_to_memory = (input$select_model_method==1))
       refreshTable('simclins')
-
-      if(nrow(df_similar_terms_as_result)>0){
-        df_similar_terms_as_result[,2]<-round(as.numeric(df_similar_terms_as_result[,2]),2)
-      }
-      if (nrow(df_cashed_similar_terms)>0) {
-        df_cashed_similar_terms<-df_cashed_similar_terms[!duplicated(df_cashed_similar_terms[,c('word','Model')]),]
-        df_cashed_similar_terms[,2]<-round(as.numeric(df_cashed_similar_terms[,2]),2)
-        df_cashed_similar_terms<-aggregate(. ~ word,data = df_cashed_similar_terms,toString)
-        df_similar_terms_duplicated <- df_cashed_similar_terms[grepl(',',df_cashed_similar_terms$Model),]
-        if(nrow(df_similar_terms_duplicated)>0)
-          df_similar_terms_as_result <-rbind(df_similar_terms_as_result,df_similar_terms_duplicated)
-        print(paste0(nrow(df_similar_terms_duplicated),' repeats of same terms in several models were found.'))
-        rm(df_similar_terms_duplicated)
-      }
 
       if(nrow(df_similar_terms_as_result)>0){
         new_similar_terms_str <- addNewSimilarTerms(df_similar_terms_as_result)
         fl_first_view_of_search_results <<- TRUE
         updateSimilarTerms()
         fl_first_view_of_search_results <<- FALSE
+
       } else new_similar_terms_str = ""
 
-      print(paste0("Final processing of search results: ",as.character(round((difftime(Sys.time(),start_time_final_process,units = "secs")),2))))
-      process_duration <- as.character(round((difftime(Sys.time(),start_time,units = "mins")),2))
-      logAction(actionDataTime <- start_time,userId = currentUserId,operation = 'System search similar terms for simclins',parameters = paste0("Simclins: ", paste(as.character(df_new_simclins$Simclin), collapse=", ")," from category ",category_str),valueAfter = new_similar_terms_str,actionDuration = process_duration)
-
-      rm(df_new_similar_terms)
-      rm(df_similar_terms_as_result)
-      rm(df_cashed_similar_terms)
-      rm(df_new_simclins)
+      logAction(actionDataTime <- Sys.time(),userId = currentUserId,operation = 'System search similar terms for simclins',parameters = paste0("Simclins: ", paste(as.character(df_new_simclins$Simclin), collapse=", ")," from category ",category_str),valueAfter = new_similar_terms_str)
 
       showModal(modalDialog(title = "Similar terms search","Similar terms` search has completed!",easyClose = TRUE))
+
     } else {
-      showModal(modalDialog(
-        title = "Error message",
-        "There are no new simclins for search!",
-        easyClose = TRUE
-      ))
+      showModal(modalDialog(title = "Error message","There are no new simclins for search!",easyClose = TRUE))
     }
+  })
 
 
-  }
 
   #############################################################################################################
   # Handler event of click button Example in the row of similar terms table
