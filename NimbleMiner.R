@@ -1773,7 +1773,28 @@ server <- function(input, output, session) {
     clearSimilarTerms()
     category_str = getSelectedCategory(input$simclins_tree_settings)
     df_new_simclins=df_simclins[df_simclins$Processed==FALSE & df_simclins$Category==category_str,]
-    findSimilarTerms(df_new_simclins,category_str)
+
+    if (nrow(df_new_simclins)>0) {
+
+      df_similar_terms_as_result = NimbleMiner::findNewSimilarTerms(df_new_simclins, category_str, models_files, similar_terms_count=input$setting_similar_terms_count,load_model_to_memory = (input$select_model_method==1))
+      refreshTable('simclins')
+
+      if(nrow(df_similar_terms_as_result)>0){
+        new_similar_terms_str <- addNewSimilarTerms(df_similar_terms_as_result)
+        fl_first_view_of_search_results <<- TRUE
+        updateSimilarTerms()
+        fl_first_view_of_search_results <<- FALSE
+
+      } else new_similar_terms_str = ""
+
+      logAction(actionDataTime <- Sys.time(),userId = currentUserId,operation = 'System search similar terms for simclins',parameters = paste0("Simclins: ", paste(as.character(df_new_simclins$Simclin), collapse=", ")," from category ",category_str),valueAfter = new_similar_terms_str)
+
+      showModal(modalDialog(title = "Similar terms search","Similar terms` search has completed!",easyClose = TRUE))
+
+    } else {
+      showModal(modalDialog(title = "Error message","There are no new simclins for search!",easyClose = TRUE))
+    }
+
     fl_next_search_in_process <<- FALSE
   })
 
