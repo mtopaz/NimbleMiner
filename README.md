@@ -20,3 +20,14 @@ To run the application, please follow these steps:
 * Restart R session (or restart RStudio)
 
 4. Open NimbleMiner.R in RStudio and run it by the button "Run App"
+
+
+**NB:**  The \"installer.R\" script referenced above installs CRAN dependencies before using devtools to install dependencies maintained on GitHub.  To address dependencies manually or with an external package manager, be advised that NimbleMiner has these CRAN package dependies:
+
+c("shiny", "stringi", "data.table", "DT", "shinythemes", "ggplot2", "keras", "readr", "shinyTree", "shinyjs", "tm", "xtable", "tau", "stopwords", "caret","fs", "devtools", "RTextTools")
+
+These dependencies are from GitHub. Install using devtools.
+
++ [wordVectors](https://github.com/bmschmidt/wordVectors)
++ [rword2vec](https://github.com/mukul13/rword2vec)
++ [maxnet](https://github.com/mrmaxent/maxnet) *is the R implementation of the [MaxEnt](https://biodiversityinformatics.amnh.org/open_source/maxent/) maximum entropy modeling application.  Be careful with your spelling.* 
