@@ -2428,7 +2428,7 @@ server <- function(input, output, session) {
       }# loop over notes
     }
 
-
+    
     df_labeled_data <- read.csv(fileName_all_labeled_data,col.names = c(orignal_source_colnames),stringsAsFactors = FALSE,fileEncoding = "UTF-8")
 
     df_negatedPosLabels <<- data.table(df_positiveLabels[!is.na(df_false_positiveLabels),orignal_source_colnames])
@@ -2454,23 +2454,24 @@ server <- function(input, output, session) {
     if(nrow(df_positiveLabels)>0)
       df_positiveLabels$Label<- TRUE
     else df_positiveLabels$Label<- logical(0)
-
-    df_labeled_data <- rbind(df_positiveLabels,df_labeled_data, fill = TRUE)
+    
+    df_labeled_data <- rbind(df_positiveLabels[,orignal_source_colnames],df_labeled_data, fill = TRUE)
     df_labeled_data<-df_labeled_data[with(df_labeled_data, order(NimbleMiner_ID)), ]
     df_labeled_data$NimbleMiner_ID<-NULL
     df_labeled_data$Note <- gsub("<span class='true-simclin'>", "", df_labeled_data$Note)
     df_labeled_data$Note <- gsub("<span class='false-simclin'>", "", df_labeled_data$Note)
     df_labeled_data$Note <- gsub("</span>", "", df_labeled_data$Note)
+    print("Saving all labeled data...")
     write.csv(df_labeled_data, file = fileName_all_labeled_data, fileEncoding = "UTF-8", na = "")
 
     total_positive_notes <-nrow(df_positiveLabels)
     total_irrelevant_notes <- nrow(df_irrelevantPosLabels)
     total_negated_notes <- nrow(df_negatedPosLabels)
     total_negative_notes <- total_notes - total_positive_notes - total_negated_notes
-
+    
     rm(df_false_positiveLabels)
     rm(df_irrelevant_positiveLabels)
-
+    print("Lebeling is completed!")
     return (list("error_msg" = "","total_notes" = total_notes, "total_positive_notes" = total_positive_notes,"total_irrelevant_notes" = total_irrelevant_notes,"total_negated_notes" = total_negated_notes,"total_negative_notes"=total_negative_notes))
   }
 
@@ -2786,7 +2787,7 @@ server <- function(input, output, session) {
 
     #check for duplicates
 
-    if(nrow(df_negations)>0 && nrow(df_negations[ which( df_negations$Negation==negation_str & df_negations$Category==negationCategory) , ])>0)  {
+    if(nrow(df_negations)>0 && nrow(df_negations[ which( df_negations$Negation==negation_str & df_negations$Type==negation_type & df_negations$Category==negationCategory) , ])>0)  {
       showModal(modalDialog(title = "Error message",  paste0("The negation \"",negation_str,"\" is in the list already!"),easyClose = TRUE))
     } else {
       #add negation to data frame
